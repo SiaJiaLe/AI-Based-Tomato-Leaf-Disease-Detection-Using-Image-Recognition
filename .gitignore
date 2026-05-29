@@ -1,0 +1,27 @@
+﻿# Environment
+.env
+.env.local
+*.env
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+frontend/dist/
+resnet34_model/data/raw/**
+!resnet34_model/data/raw/**/.gitkeep
+resnet34_model/data/processed/**
+!resnet34_model/data/processed/**/.gitkeep
+resnet34_model/outputs/*.pth
+resnet34_model/outputs/checkpoints/*
+!resnet34_model/outputs/checkpoints/.gitkeep
+!resnet34_model/outputs/evaluation_report/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+.idea/
+.vscode/
+.DS_Store
+.ipynb_checkpoints/
+.pytest_cache/
+*.log

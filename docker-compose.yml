@@ -1,0 +1,42 @@
+﻿version: "3.9"
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - model_artifacts:/app/model_artifacts
+      - prediction_uploads:/app/uploads
+    environment:
+      - MODEL_PATH=/app/model_artifacts/best_model.pth
+      - LABELS_PATH=/app/model_artifacts/class_labels.json
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+  model_trainer:
+    build: ./resnet34_model
+    volumes:
+      - ./resnet34_model/data:/app/data
+      - model_artifacts:/app/outputs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - training
+volumes:
+  model_artifacts:
+  prediction_uploads:
