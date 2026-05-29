@@ -156,6 +156,7 @@ Backend inference may use **CPU** for FYP unless HPC policy requires GPU for the
 
 | Service | Build | Port | Role |
 |---------|-------|------|------|
+| `postgres` | `postgres:16-alpine` | 5432 | PostgreSQL database |
 | `backend` | `./backend` | 8000 | FastAPI REST API |
 | `frontend` | `./frontend` | 5173 | Vue 3 (Vite) |
 | `model_trainer` | `./resnet34_model` | — | Training (profile `training`) |
@@ -285,7 +286,7 @@ backend/
 │   └── dtos/           prediction_request.py, prediction_response.py
 ├── infrastructure/
 │   ├── ml/             resnet34_inferencer.py, preprocessor.py, postprocessor.py
-│   ├── persistence/    sqlite_prediction_repo.py, database.py
+│   ├── persistence/    postgres_prediction_repo.py, database.py, models.py
 │   └── storage/        image_store.py
 ├── interface/
 │   ├── routers/        health_router.py, prediction_router.py
@@ -334,7 +335,7 @@ torch==2.2.0
 torchvision==0.17.0
 Pillow
 SQLAlchemy
-aiosqlite
+asyncpg
 pydantic-settings
 pytest
 httpx
@@ -426,7 +427,7 @@ frontend/        →  Vue UI via api.js
 | Layer | Technology |
 |-------|------------|
 | ML | PyTorch 2.2, Torchvision, ResNet34 |
-| Backend | FastAPI, SQLAlchemy, SQLite |
+| Backend | FastAPI, SQLAlchemy, PostgreSQL |
 | Frontend | Vue 3, Vite, Pinia, Axios |
 | Local dev | Docker Compose |
 | HPC training | Slurm + Singularity/Docker (primary) or venv (fallback) |

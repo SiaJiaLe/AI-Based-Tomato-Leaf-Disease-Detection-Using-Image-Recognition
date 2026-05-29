@@ -1,0 +1,13 @@
+﻿data/raw/**
+!data/raw/**/.gitkeep
+data/processed/**
+outputs/*.pth
+outputs/checkpoints/*
+!outputs/checkpoints/.gitkeep
+!outputs/evaluation_report/.gitkeep
+__pycache__
+.venv
+.ipynb_checkpoints
+notebooks
+*.md
+.git

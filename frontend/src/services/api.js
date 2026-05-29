@@ -1,4 +1,4 @@
-﻿/**
+/**
  * API client — sole bridge to backend. Maps 1:1 to FastAPI router methods.
  */
 import axios from "axios";

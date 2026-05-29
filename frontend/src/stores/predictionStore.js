@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Pinia store — calls api.js only (scaffold).
  */
 import { defineStore } from "pinia";

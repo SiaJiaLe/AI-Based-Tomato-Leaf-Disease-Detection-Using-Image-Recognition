@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app">
     <AppHeader />
     <main class="main">
