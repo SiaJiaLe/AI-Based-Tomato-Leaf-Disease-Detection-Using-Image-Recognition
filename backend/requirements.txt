@@ -1,11 +1,7 @@
-﻿fastapi==0.111.0
-uvicorn[standard]
+fastapi
+uvicorn
+onnxruntime
 python-multipart
-torch==2.2.0
-torchvision==0.17.0
-Pillow
-SQLAlchemy[asyncio]>=2.0
-asyncpg
+pillow
+numpy
 pydantic-settings
-pytest
-httpx

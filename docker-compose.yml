@@ -1,4 +1,4 @@
-﻿# Local development — backend + frontend + PostgreSQL
+# Local development — backend + frontend + PostgreSQL
 # Usage: docker compose up --build
 # Training (GPU): docker compose -f docker-compose.yml -f docker-compose.training.yml --profile training up model_trainer
 
@@ -44,8 +44,8 @@ services:
     env_file:
       - .env
     environment:
-      MODEL_PATH: ${MODEL_PATH:-/app/model_artifacts/best_model.pth}
-      LABELS_PATH: ${LABELS_PATH:-/app/model_artifacts/class_labels.json}
+      MODEL_PATH: ${MODEL_PATH:-/app/model/best_model.onnx}
+      LABELS_PATH: ${LABELS_PATH:-/app/model/class_labels.json}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tomato}:${POSTGRES_PASSWORD:-tomato}@postgres:5432/${POSTGRES_DB:-tomato_disease}
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
