@@ -1,0 +1,19 @@
+Tomato Leaf Disease Detection - Final Evaluation Report
+============================================================
+
+                                               precision    recall  f1-score   support
+
+                      Tomato___Bacterial_spot     0.9859    0.9937    0.9898       632
+                        Tomato___Early_blight     0.9259    0.9774    0.9510       665
+                         Tomato___Late_blight     0.9873    0.9501    0.9683      1062
+                           Tomato___Leaf_Mold     1.0000    0.9943    0.9971       527
+                  Tomato___Septoria_leaf_spot     0.9854    0.9841    0.9848       756
+Tomato___Spider_mites Two-spotted_spider_mite     0.9938    0.9979    0.9959       482
+                         Tomato___Target_Spot     0.9977    0.9933    0.9955       445
+       Tomato___Tomato_Yellow_Leaf_Curl_Virus     0.9971    0.9990    0.9981      1042
+                 Tomato___Tomato_mosaic_virus     0.9934    0.9956    0.9945       451
+                             Tomato___healthy     0.9957    0.9947    0.9952       938
+
+                                     accuracy                         0.9859      7000
+                                    macro avg     0.9862    0.9880    0.9870      7000
+                                 weighted avg     0.9862    0.9859    0.9859      7000
