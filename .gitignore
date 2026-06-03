@@ -25,3 +25,5 @@ backend/uploads/*
 .ipynb_checkpoints/
 .pytest_cache/
 *.log
+backend.tar
+frontend.tar
