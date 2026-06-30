@@ -99,15 +99,14 @@ def process_yolo_dataset(dataset_path, class_names_list, raw_data_dir):
             target_dir = Path(raw_data_dir) / target_folder_name
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy image with a unique name to prevent overwriting
-            # Format: real_data_XYZ.jpg
+            # Move image with a unique name instead of copying to save HPC disk space
             unique_filename = f"real_{uuid.uuid4().hex[:8]}{image_path.suffix}"
             dest_path = target_dir / unique_filename
             
-            shutil.copy2(image_path, dest_path)
+            shutil.move(image_path, dest_path)
             copied_count += 1
 
-    print(f"[{dataset_path.name}] Copied {copied_count} images. Skipped {skipped_count} (ignored classes/no labels).")
+    print(f"[{dataset_path.name}] Moved {copied_count} images. Skipped {skipped_count} (ignored classes/no labels).")
 
 if __name__ == "__main__":
     # Base directory is one level up from scripts
