@@ -29,23 +29,23 @@ def get_dataloaders():
         A.RandomResizedCrop(size=(IMAGE_SIZE, IMAGE_SIZE), scale=(0.6, 1.0)),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.3),
-        A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.2, rotate_limit=35, p=0.6),
+        A.Affine(scale=(0.8, 1.2), translate_percent=(-0.1, 0.1), rotate=(-35, 35), p=0.6),
         A.Perspective(scale=(0.05, 0.15), p=0.3),
         A.ElasticTransform(alpha=80, sigma=80 * 0.05, p=0.2), # Simulates leaf curl
         A.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3, hue=0.1, p=0.7),
         A.RandomShadow(p=0.3),
         A.GaussianBlur(blur_limit=(3, 5), p=0.25),
-        A.GaussNoise(var_limit=(5, 30), p=0.25),
-        A.ImageCompression(quality_lower=70, quality_upper=100, p=0.2),
-        A.CoarseDropout(max_holes=8, max_height=20, max_width=20, min_holes=1, fill_value=0, p=0.3),
+        A.GaussNoise(p=0.25),
+        A.ImageCompression(quality_range=(70, 100), p=0.2),
+        A.CoarseDropout(num_holes_range=(1, 8), hole_height_range=(1, 20), hole_width_range=(1, 20), p=0.3),
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])
     
     # Validation uses strictly pure images
     val_test_transforms = A.Compose([
-        A.Resize(size=(256, 256)),
-        A.CenterCrop(size=(IMAGE_SIZE, IMAGE_SIZE)),
+        A.Resize(height=256, width=256),
+        A.CenterCrop(height=IMAGE_SIZE, width=IMAGE_SIZE),
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])
