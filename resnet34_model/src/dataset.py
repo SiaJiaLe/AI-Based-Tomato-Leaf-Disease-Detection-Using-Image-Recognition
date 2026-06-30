@@ -26,7 +26,7 @@ class AlbumentationsDataset(datasets.ImageFolder):
 def get_dataloaders():
     # Advanced Real-World Augmentation Pipeline
     train_transforms = A.Compose([
-        A.RandomResizedCrop(IMAGE_SIZE, IMAGE_SIZE, scale=(0.6, 1.0)),
+        A.RandomResizedCrop(size=(IMAGE_SIZE, IMAGE_SIZE), scale=(0.6, 1.0)),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.3),
         A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.2, rotate_limit=35, p=0.6),
@@ -44,8 +44,8 @@ def get_dataloaders():
     
     # Validation uses strictly pure images
     val_test_transforms = A.Compose([
-        A.Resize(256, 256),
-        A.CenterCrop(IMAGE_SIZE, IMAGE_SIZE),
+        A.Resize(size=(256, 256)),
+        A.CenterCrop(size=(IMAGE_SIZE, IMAGE_SIZE)),
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])
