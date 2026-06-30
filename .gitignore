@@ -27,3 +27,5 @@ backend/uploads/*
 *.log
 backend.tar
 frontend.tar
+real_data_1
+/real_data_2
