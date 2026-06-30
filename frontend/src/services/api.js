@@ -23,4 +23,18 @@ export const listPredictions = () => api.get("/api/v1/predictions");
 export const getPrediction = (predictionId) =>
   api.get(`/api/v1/predictions/${predictionId}`);
 
+export const listTreatments = (diseaseLabel) =>
+  api.get("/api/v1/treatments", { params: { disease: diseaseLabel } });
+
+export const logTreatment = async (predictionId, treatmentOptionId, outcome) => {
+  const { data } = await api.post("/api/v1/treatment-logs", {
+    prediction_id: predictionId,
+    treatment_option_id: treatmentOptionId,
+  });
+  if (outcome) {
+    await api.patch(`/api/v1/treatment-logs/${data.log_id}/outcome`, { outcome });
+  }
+  return data;
+};
+
 export default api;

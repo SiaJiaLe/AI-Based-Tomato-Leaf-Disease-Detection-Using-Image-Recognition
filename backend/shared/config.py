@@ -1,4 +1,4 @@
-﻿"""Application configuration."""
+"""Application configuration — single source of truth for all settings."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,12 +9,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    model_path: str = "./model_artifacts/best_model.pth"
-    labels_path: str = "./model_artifacts/class_labels.json"
+    model_path: str = "/app/model/best_model.onnx"
+    labels_path: str = "/app/model/class_labels.json"
     database_url: str = (
-        "postgresql+asyncpg://tomato:tomato@localhost:5432/tomato_disease"
+        "postgresql+asyncpg://tomato:tomato@postgres:5432/tomato_disease"
     )
-    upload_dir: str = "./uploads"
+    upload_dir: str = "/app/uploads"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property

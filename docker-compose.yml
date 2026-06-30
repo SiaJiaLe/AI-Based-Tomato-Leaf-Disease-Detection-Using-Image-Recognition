@@ -6,7 +6,7 @@ name: tomato-disease
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4
     container_name: tomato-postgres
     ports:
       - "${POSTGRES_PORT:-5432}:5432"

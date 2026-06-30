@@ -1,582 +1,420 @@
-# Implementation Plan: AI-Based Tomato Leaf Disease Detection System
+# Implementation Plan v3: Full System — Phase 0 + Phase 1
+## Tomato Leaf Disease Advisory Platform
 **FYP by Sia Jia Le (22062566) — Sunway University**
+**Supersedes implementation_plan_v2.md**
 
 ---
 
-## Overview
+## Current State (as of this plan)
 
-This plan translates your Capstone Project 1 proposal into a fully Dockerized, production-ready development environment split across three top-level directories:
+### What works
+- ONNX model inference via `interface/api_endpoints.py` → `POST /api/predict` (old route, no `/v1`)
+- Frontend drag-drop upload in `HomeView.vue` calling `/api/predict` via `api/client.js`
+- PostgreSQL async connection infrastructure in `infrastructure/persistence/database.py`
 
-```
-tomato-disease-detection/
-├── backend/          # FastAPI (Python) — REST API + DDD business logic
-├── frontend/         # Vue 3 — Web UI for image upload & prediction
-└── resnet34_model/   # PyTorch training, evaluation, and model export
-```
-
----
-
-## 1. Top-Level Structure
-
-```
-tomato-disease-detection/
-├── docker-compose.yml          # Orchestrates all three services
-├── .env                        # Shared environment variables
-├── .gitignore
-├── README.md
-│
-├── backend/
-├── frontend/
-└── resnet34_model/
-```
-
-### docker-compose.yml — Service Overview
-
-| Service        | Build Context      | Port  | Role                                  |
-|----------------|--------------------|-------|---------------------------------------|
-| `backend`      | `./backend`        | 8000  | FastAPI REST API                      |
-| `frontend`     | `./frontend`       | 5173  | Vue 3 dev server (Vite)               |
-| `model_trainer`| `./resnet34_model` | —     | One-off training/eval container       |
+### Critical problems to fix first (Phase 0)
+| Problem | Impact |
+|---|---|
+| Two FastAPI apps (`api_endpoints.py` vs `main.py`) | Docker runs `api_endpoints.py`; the DDD routers in `main.py` are never called |
+| Two Settings classes (`infrastructure/environment_variables.py` vs `shared/config.py`) | Config mismatch between working and scaffold code |
+| Two frontend API clients (`api/client.js` vs `services/api.js`) | `predictionStore.js` calls the broken one; `HomeView.vue` calls the working one |
+| All DDD ML layer files are stubs | `infrastructure/ml/preprocessor.py`, `postprocessor.py`, `resnet34_inferencer.py` raise `NotImplementedError` |
+| `infrastructure/persistence/models.py` has no ORM table | Nothing writes to PostgreSQL |
+| `postgres_prediction_repo.py` stubs all methods | No persistence |
+| `interface/routers/prediction_router.py` returns HTTP 501 | DDD routes are dead |
+| Frontend router only registers `/` | Links to `/detect` and `/history` give Vue Router 404 |
+| `health_router.py` hardcodes `model_loaded: False` | Health check always reports model not loaded |
 
 ---
 
-## 2. `resnet34_model/` — Deep Learning Module
+## Phase 0 — Architecture Consolidation & PostgreSQL Foundation
 
-This is a **standalone Python service** responsible for the full ML lifecycle: training, evaluation, and exporting the model for the backend to consume.
+**Goal:** One working FastAPI app following DDD, PostgreSQL storing every prediction, frontend fully wired end-to-end through `services/api.js`.
 
-### Folder Structure
+### Step 0.1 — Update Docker Compose (PostgreSQL with PostGIS)
 
-```
-resnet34_model/
-├── Dockerfile
-├── requirements.txt
-│
-├── data/
-│   ├── raw/                    # Downloaded PlantVillage dataset (gitignored)
-│   │   ├── Tomato_Bacterial_Spot/
-│   │   ├── Tomato_Early_Blight/
-│   │   ├── Tomato_Late_Blight/
-│   │   ├── Tomato_Leaf_Mold/
-│   │   ├── Tomato_Septoria_Leaf_Spot/
-│   │   ├── Tomato_Spider_Mites/
-│   │   ├── Tomato_Target_Spot/
-│   │   ├── Tomato_Yellow_Leaf_Curl_Virus/
-│   │   ├── Tomato_Mosaic_Virus/
-│   │   └── Tomato_Healthy/
-│   └── processed/              # After split: train/val/test subfolders
-│       ├── train/
-│       ├── val/
-│       └── test/
-│
-├── src/
-│   ├── config.py               # Hyperparameters, paths, constants
-│   ├── dataset.py              # DataLoader, augmentation pipeline
-│   ├── model.py                # ResNet34 initialization & head replacement
-│   ├── train.py                # Two-stage training loop
-│   ├── evaluate.py             # Metrics: accuracy, precision, recall, F1, confusion matrix
-│   ├── export.py               # Save best checkpoint + class_labels.json
-│   └── utils.py                # Helpers: seeding, logging, plotting
-│
-├── notebooks/
-│   └── exploratory_analysis.ipynb
-│
-├── outputs/
-│   ├── checkpoints/            # Epoch checkpoints saved during training
-│   ├── best_model.pth          # Best checkpoint selected by val macro F1
-│   ├── class_labels.json       # {0: "Bacterial_Spot", 1: "Early_Blight", ...}
-│   └── evaluation_report/      # Confusion matrix, per-class metrics, plots
-│
-└── scripts/
-    ├── prepare_dataset.py      # Download + split into train/val/test (70:15:15)
-    └── run_training.sh         # Shell script to kick off full pipeline
-```
+**File changed:** `docker-compose.yml`
 
-### Key Design Decisions
+Replace `postgres:16-alpine` with `postgis/postgis:16-3.4`. PostGIS is not used yet but is required for the Phase 4 outbreak heatmap — installing it now avoids a painful migration later.
 
-**`src/config.py`**
-```python
-# All hyperparameters in one place — easy to tune
-IMAGE_SIZE = 224
-BATCH_SIZE = 32
-NUM_CLASSES = 10
-STAGE_A_LR = 1e-3     # Feature extraction (frozen backbone)
-STAGE_B_LR = 1e-4     # Fine-tuning (last residual block unfrozen)
-STAGE_A_EPOCHS = 15
-STAGE_B_EPOCHS = 25
-EARLY_STOPPING_PATIENCE = 7
-DATASET_SPLIT = (0.70, 0.15, 0.15)
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD  = [0.229, 0.224, 0.225]
-```
-
-**`src/dataset.py` — Augmentation pipeline (training only)**
-```python
-train_transforms = transforms.Compose([
-    transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(degrees=30),
-    transforms.ColorJitter(brightness=0.3, contrast=0.3),
-    transforms.ToTensor(),
-    transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
-])
-val_test_transforms = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
-])
-```
-
-**`src/model.py` — Two-stage model setup**
-- Stage A: freeze all backbone layers, train only `fc` (classifier head)
-- Stage B: unfreeze `layer4` (last residual block group) + `fc`, use lower LR
-
-**`src/train.py` — Checkpointing + early stopping**
-- Save checkpoint at end of every epoch
-- Track best `val_macro_f1`; restore best weights at end of training
-- Log training/validation loss and metrics per epoch
-
-**`src/export.py`**
-- Copy best checkpoint to `outputs/best_model.pth`
-- Write `outputs/class_labels.json` preserving exact index-to-classname mapping used during training
-
-### Dockerfile (resnet34_model)
-
-```dockerfile
-FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-CMD ["python", "src/train.py"]
-```
-
-### requirements.txt
+Also update the backend CMD reference from `api_endpoints:app` to `main:app` (DDD entry point).
 
 ```
-torch==2.2.0
-torchvision==0.17.0
-numpy
-scikit-learn
-matplotlib
-seaborn
-Pillow
-tqdm
+postgres:
+  image: postgis/postgis:16-3.4
+  environment:
+    POSTGRES_USER: tomato
+    POSTGRES_PASSWORD: tomato
+    POSTGRES_DB: tomato_disease
+  ports: 5432:5432
+  healthcheck: pg_isready
 ```
+
+For **local dev without Docker** (using your local PostgreSQL 18 + PostGIS 3.6), set in `.env`:
+```
+DATABASE_URL=postgresql+asyncpg://postgres:1234@localhost:5432/tomato_disease
+```
+Then create the database manually in pgAdmin: right-click → Create Database → `tomato_disease`.
+
+### Step 0.2 — Unify Settings
+
+**Files changed:**
+- `shared/config.py` — add all missing vars (already has `model_path`, `labels_path`, `database_url`, `upload_dir`, `cors_origins`; confirm correct)
+- `infrastructure/environment_variables.py` — delete (replace all imports)
+- `interface/api_endpoints.py` — update to import from `shared.config`
+
+All code uses `shared.config.settings` as the single source of truth.
+
+### Step 0.3 — Fix Backend Entry Point (Consolidate into main.py)
+
+**Files changed:**
+- `main.py` — mount working ONNX loading startup event; keep DDD router includes
+- `interface/api_endpoints.py` — keep only as reference, rename to `_legacy_api_endpoints.py` (not imported)
+- `backend/Dockerfile` — ensure CMD is `uvicorn main:app`
+
+The startup event from `api_endpoints.py` (ONNX model load, `PredictionService` init) moves into `main.py` as a FastAPI lifespan event.
+
+### Step 0.4 — Add Alembic Migrations
+
+**Files added/changed:**
+- `backend/requirements.txt` — add `alembic>=1.13.0`
+- `backend/alembic.ini` — new (generated by `alembic init`)
+- `backend/infrastructure/persistence/migrations/` — new directory with `env.py`, `versions/`
+- First migration `0001_baseline_predictions.py` — creates `predictions` table
+
+```sql
+-- Migration 0001
+CREATE TABLE predictions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    label VARCHAR(100) NOT NULL,
+    confidence FLOAT NOT NULL,
+    advice TEXT,
+    image_path TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Step 0.5 — ORM Model
+
+**File changed:** `infrastructure/persistence/models.py`
+
+Add `PredictionRecord(Base)` mapped to the `predictions` table.
+
+### Step 0.6 — PostgresPredictionRepository
+
+**File changed:** `infrastructure/persistence/postgres_prediction_repo.py`
+
+Implement all 3 abstract methods from `domain/repositories/prediction_repository.py`:
+- `save(prediction)` — INSERT + return saved entity
+- `list_all()` — SELECT all, newest first
+- `get_by_id(id)` — SELECT by UUID
+
+### Step 0.7 — DDD ML Layer (fill stubs)
+
+**Files changed:**
+- `infrastructure/ml/preprocessor.py` — implement `transform(image)`: `Resize(256)` → `CenterCrop(224)` → normalize with ImageNet stats → NCHW numpy array (matches training pipeline exactly)
+- `infrastructure/ml/postprocessor.py` — implement `to_label_and_confidence(logits, labels)`: softmax → top-1 label + confidence%
+- `infrastructure/ml/resnet34_inferencer.py` — implement `predict(image_bytes)`: load image → preprocessor → ONNXEngine.run() → postprocessor
+
+The existing `application/disease_prediction_logic.py` (TTA + preprocessing) becomes the implementation source — the DDD classes wrap the same logic properly.
+
+### Step 0.8 — DiseaseService
+
+**File changed:** `domain/services/disease_service.py`
+
+Implement `get_advice_for_label(label: str) -> Disease` for all 10 disease classes with concise, actionable treatment text:
+
+| Disease | Advice summary |
+|---|---|
+| Bacterial_spot | Copper-based bactericide; remove infected leaves; avoid overhead irrigation |
+| Early_blight | Chlorothalonil or mancozeb fungicide; rotate crops; remove lower leaves |
+| Late_blight | Metalaxyl fungicide immediately; destroy infected plants; improve drainage |
+| Leaf_Mold | Reduce humidity; copper fungicide; improve air circulation |
+| Septoria_leaf_spot | Mancozeb fungicide; remove infected leaves; mulch soil |
+| Spider_mites | Miticide (abamectin); increase humidity; introduce predatory mites |
+| Target_Spot | Azoxystrobin fungicide; remove debris; improve air flow |
+| Yellow_Leaf_Curl_Virus | No cure — remove infected plants; control whitefly vector; use reflective mulch |
+| Tomato_mosaic_virus | No cure — remove infected plants; sanitize tools; control aphid vectors |
+| healthy | No treatment needed. Continue regular crop monitoring. |
+
+### Step 0.9 — Implement Use Cases
+
+**Files changed:**
+- `application/use_cases/predict_disease.py` — orchestrate: receive image bytes → ResNet34Inferencer.predict() → DiseaseService.get_advice() → PostgresPredictionRepository.save() → return PredictionResponseDTO
+- `application/use_cases/get_prediction_history.py` — call PostgresPredictionRepository.list_all() → return list of PredictionResponseDTO
+- `application/dtos/prediction_request.py` — simple DTO (image bytes input)
+- `application/dtos/prediction_response.py` — already implemented; verify fields
+
+### Step 0.10 — Wire Prediction Router
+
+**File changed:** `interface/routers/prediction_router.py`
+
+Implement all 3 routes properly:
+- `POST /api/v1/predict` — accept `file: UploadFile`, call `PredictDiseaseUseCase`
+- `GET /api/v1/predictions` — call `GetPredictionHistoryUseCase`
+- `GET /api/v1/predictions/{id}` — call `GetPredictionHistoryUseCase.get_by_id()`
+
+**File changed:** `interface/routers/health_router.py`
+
+Fix `model_loaded` to check actual ONNX engine state instead of hardcoded `False`.
+
+### Step 0.11 — ImageStore
+
+**File changed:** `infrastructure/storage/image_store.py`
+
+Implement `save(file_bytes, filename) -> str` — writes uploaded image to `UPLOAD_DIR`, returns relative path for storage in DB.
+
+### Step 0.12 — Frontend Fixes
+
+**Files changed:**
+- `frontend/src/router/index.js` — add routes for `/detect` → `DetectView` and `/history` → `HistoryView`
+- `frontend/src/api/client.js` — update `predictDisease()` to call `/api/v1/predict` (DDD route)
+- `frontend/src/services/api.js` — this is already correct; will be the one import used everywhere
+- `frontend/src/stores/predictionStore.js` — verify imports `services/api.js`; add `fetchHistory` action
+- `frontend/src/views/HomeView.vue` — update import from `api/client` to `services/api`
+
+**Files added:**
+- `frontend/src/views/DetectView.vue` — full drag-drop + result display page (moves the logic from `HomeView.vue` here; `HomeView` becomes a landing page with a "Start Detection" button)
+- `frontend/src/views/HistoryView.vue` — table of past predictions (calls `listPredictions()`)
+- `frontend/src/components/history/PredictionList.vue` — table component showing id, label, confidence, timestamp
+- `frontend/src/components/prediction/ResultCard.vue` — full result card (can reuse root `ResultCard.vue`)
+
+### Phase 0 Verification Checklist
+- [ ] `docker compose up --build` starts cleanly; postgres healthcheck passes
+- [ ] `POST /api/v1/predict` with a tomato leaf image returns `{prediction_id, label, confidence, advice, timestamp}`
+- [ ] Prediction is saved to PostgreSQL (verify via pgAdmin)
+- [ ] `GET /api/v1/predictions` returns the saved prediction
+- [ ] `GET /api/v1/health` returns `{"status": "ok", "model_loaded": true}`
+- [ ] Frontend `/detect` page loads and shows drag-drop → result flow
+- [ ] Frontend `/history` page loads and shows past predictions
 
 ---
 
-## 3. `backend/` — FastAPI + Domain-Driven Design
+## Phase 1 — Diagnostic Intelligence (Tier 1)
 
-The backend exposes a REST API for the frontend to call. It follows **DDD (Domain-Driven Design)** with four layers: Domain → Application → Infrastructure → Interface.
+**Goal:** Severity estimation, confidence-aware recommendations, treatment options per disease.
 
-### Folder Structure
+### Step 1.1 — Database Schema Extension
 
-```
-backend/
-├── Dockerfile
-├── requirements.txt
-├── main.py                     # FastAPI app entry point
-│
-├── domain/                     # LAYER 1: Pure business rules (no frameworks)
-│   ├── entities/
-│   │   ├── prediction.py       # Prediction entity: image_id, label, confidence, timestamp
-│   │   └── disease.py          # Disease value object: name, severity_hint, treatment_tip
-│   ├── repositories/
-│   │   └── prediction_repository.py   # Abstract interface (port)
-│   └── services/
-│       └── disease_service.py  # Domain logic: map prediction to treatment advice
-│
-├── application/                # LAYER 2: Use cases (orchestrates domain)
-│   ├── use_cases/
-│   │   ├── predict_disease.py  # Use case: receive image → return prediction result
-│   │   └── get_prediction_history.py
-│   └── dtos/
-│       ├── prediction_request.py   # Input DTO: validated image upload
-│       └── prediction_response.py  # Output DTO: label, confidence, advice
-│
-├── infrastructure/             # LAYER 3: External concerns (ML model, DB, storage)
-│   ├── ml/
-│   │   ├── resnet34_inferencer.py  # Loads best_model.pth, runs inference
-│   │   ├── preprocessor.py         # Replicates training-time preprocessing exactly
-│   │   └── postprocessor.py        # Softmax → top-1 label + confidence
-│   ├── persistence/
-│   │   ├── sqlite_prediction_repo.py   # Concrete repo (implements domain interface)
-│   │   └── database.py                 # SQLite setup via SQLAlchemy
-│   └── storage/
-│       └── image_store.py      # Saves uploaded images to /uploads
-│
-├── interface/                  # LAYER 4: HTTP controllers (FastAPI routers)
-│   ├── routers/
-│   │   ├── prediction_router.py    # POST /predict, GET /predictions
-│   │   └── health_router.py        # GET /health
-│   └── middleware/
-│       └── cors.py             # CORS config for Vue frontend
-│
-├── shared/
-│   ├── config.py               # Env vars: model path, upload dir, DB URL
-│   └── exceptions.py           # Custom exception types
-│
-└── tests/
-    ├── unit/
-    │   ├── test_disease_service.py
-    │   └── test_preprocessor.py
-    └── integration/
-        └── test_prediction_api.py
+**Migration:** `0002_tier1_diagnostic_intelligence`
+
+```sql
+-- Extend predictions table
+ALTER TABLE predictions
+    ADD COLUMN severity_level VARCHAR(20),        -- 'mild' | 'moderate' | 'severe'
+    ADD COLUMN affected_area_ratio FLOAT,          -- 0.0 to 1.0
+    ADD COLUMN is_low_confidence BOOLEAN DEFAULT FALSE,
+    ADD COLUMN certainty_label VARCHAR(50);        -- 'high_certainty' | 'moderate_certainty' | 'low_certainty_seek_confirmation'
+
+-- Multi-photo diagnosis sessions
+CREATE TABLE diagnosis_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    consolidated_label VARCHAR(50),
+    consolidated_confidence FLOAT,
+    photo_count INT DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE predictions ADD COLUMN session_id UUID REFERENCES diagnosis_sessions(id);
+
+-- Treatment options (structured, queryable)
+CREATE TABLE treatment_options (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    disease_label VARCHAR(50) NOT NULL,
+    treatment_type VARCHAR(20) NOT NULL,           -- 'organic' | 'chemical'
+    product_name VARCHAR(200) NOT NULL,
+    active_ingredient VARCHAR(200),
+    application_method TEXT,
+    estimated_cost_myr DECIMAL(10,2),
+    severity_min VARCHAR(20),
+    severity_max VARCHAR(20),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_treatment_disease ON treatment_options(disease_label);
+
+-- Treatment outcome tracking
+CREATE TABLE treatment_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    prediction_id UUID REFERENCES predictions(id),
+    treatment_option_id UUID REFERENCES treatment_options(id),
+    applied_at TIMESTAMPTZ DEFAULT now(),
+    outcome VARCHAR(20),                           -- 'improved' | 'worsened' | 'no_change' | 'pending'
+    outcome_logged_at TIMESTAMPTZ
+);
 ```
 
-### DDD Layer Responsibilities
+### Step 1.2 — Domain Services
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  INTERFACE LAYER (FastAPI Routers)                              │
-│  Receives HTTP request → calls Application use case             │
-├─────────────────────────────────────────────────────────────────┤
-│  APPLICATION LAYER (Use Cases + DTOs)                           │
-│  Orchestrates: validates input → calls Domain → calls Infra     │
-├─────────────────────────────────────────────────────────────────┤
-│  DOMAIN LAYER (Entities, Value Objects, Abstract Repos)         │
-│  Pure business rules. No framework imports. Always stable.      │
-├─────────────────────────────────────────────────────────────────┤
-│  INFRASTRUCTURE LAYER (ML Model, DB, File Storage)              │
-│  Implements Domain interfaces. Framework-dependent.             │
-└─────────────────────────────────────────────────────────────────┘
-```
+**Files added:**
+- `domain/services/confidence_policy.py` — `ConfidencePolicy` class:
+  - `should_show_alternatives(confidence) -> bool` (threshold: 60%)
+  - `classify_severity(affected_area_ratio) -> str` (mild < 15%, moderate < 40%, severe ≥ 40%)
+  - `get_certainty_label(confidence) -> str` (high ≥ 85%, moderate ≥ 60%, low < 60%)
 
-### Key API Endpoints
+**Files added:**
+- `domain/entities/treatment_option.py` — dataclass
+- `domain/entities/diagnosis_session.py` — dataclass
+- `domain/entities/treatment_log.py` — dataclass
+- `domain/repositories/treatment_repository.py` — ABC: `get_for_disease(label, severity)`
 
-| Method | Endpoint         | Description                                 |
-|--------|------------------|---------------------------------------------|
-| POST   | `/predict`       | Upload a tomato leaf image, get prediction  |
-| GET    | `/predictions`   | List past predictions (history)             |
-| GET    | `/health`        | Backend + model loaded status               |
+### Step 1.3 — Lesion Segmenter (Severity Estimation)
 
-### `POST /predict` — Request/Response
+**File added:** `infrastructure/ml/lesion_segmenter.py`
 
-**Request:** `multipart/form-data` with field `image` (JPEG/PNG)
+Classical CV approach (no new ML model needed):
+- Convert image to HSV
+- Mask leaf area (green hues)
+- Mask lesion area (brown/yellow patches within leaf)
+- Return `lesion_pixels / leaf_pixels` ratio
 
-**Response:**
-```json
-{
-  "prediction_id": "uuid-...",
-  "label": "Early_Blight",
-  "confidence": 0.9423,
-  "advice": "Apply copper-based fungicide. Remove infected leaves.",
-  "timestamp": "2026-05-29T10:30:00Z"
-}
-```
+Requires adding `opencv-python-headless` to `requirements.txt`.
 
-### `infrastructure/ml/resnet34_inferencer.py` — Critical design
+### Step 1.4 — Treatment Repository
 
-```python
-# Loads model ONCE at startup (singleton pattern)
-# Shares loaded model across all requests — no redundant reloading
-class ResNet34Inferencer:
-    def __init__(self, model_path: str, labels_path: str):
-        self.model = self._load_model(model_path)
-        self.labels = self._load_labels(labels_path)
+**Files added:**
+- `infrastructure/persistence/models.py` — add `TreatmentOptionRecord`, `TreatmentLogRecord`, `DiagnosisSessionRecord` ORM models
+- `infrastructure/persistence/postgres_treatment_repo.py` — implement `get_for_disease(label, severity)`
 
-    def predict(self, image: PIL.Image) -> tuple[str, float]:
-        tensor = self.preprocessor.transform(image)
-        with torch.no_grad():
-            logits = self.model(tensor.unsqueeze(0))
-        probs = F.softmax(logits, dim=1)
-        conf, idx = probs.max(1)
-        return self.labels[idx.item()], conf.item()
-```
+### Step 1.5 — Seed Script
 
-### Dockerfile (backend)
+**File added:** `backend/scripts/seed_treatments.py`
 
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-```
+Insert 2–4 treatment options per disease (20–40 rows total). Each row has:
+- Disease label
+- Type (organic/chemical)
+- Product name (Malaysian-registered where possible)
+- Active ingredient
+- Application method
+- Estimated cost in MYR
+- Which severity levels it applies to
 
-### requirements.txt
+### Step 1.6 — Update Use Cases & DTOs
 
-```
-fastapi==0.111.0
-uvicorn[standard]
-python-multipart
-torch==2.2.0
-torchvision==0.17.0
-Pillow
-SQLAlchemy
-aiosqlite
-pydantic-settings
-```
+**Files changed:**
+- `application/use_cases/predict_disease.py` — now also calls `LesionSegmenter`, `ConfidencePolicy`, `TreatmentRepository`; returns extended result
+- `application/dtos/prediction_response.py` — add: `severity_level`, `affected_area_ratio`, `is_low_confidence`, `certainty_label`, `alternative_labels`, `treatment_options`
+
+### Step 1.7 — New API Endpoints
+
+**File changed:** `interface/routers/prediction_router.py` — add:
+- `GET /api/v1/treatments?disease={label}&severity={level}` — list applicable treatments
+- `POST /api/v1/treatment-logs` — log an applied treatment
+- `PATCH /api/v1/treatment-logs/{id}/outcome` — record follow-up outcome
+
+**File added:** `interface/routers/session_router.py` — multi-photo session endpoints:
+- `POST /api/v1/diagnosis-sessions` — start session
+- `POST /api/v1/diagnosis-sessions/{id}/photos` — add photo
+- `GET /api/v1/diagnosis-sessions/{id}` — get consolidated result
+
+### Step 1.8 — Frontend Components
+
+**Files added:**
+- `frontend/src/components/prediction/SeverityBadge.vue` — color-coded pill: green (mild), yellow (moderate), red (severe)
+- `frontend/src/components/prediction/TreatmentCard.vue` — one card per treatment option showing name, type badge, cost, method
+- `frontend/src/components/prediction/AlternativeLabels.vue` — shown when `is_low_confidence=true`; lists top-3 candidates
+- `frontend/src/components/prediction/ConfidenceBanner.vue` — warning banner for `low_certainty_seek_confirmation` predictions
+
+**Files changed:**
+- `frontend/src/components/ResultCard.vue` — extend to show `SeverityBadge`, `TreatmentCard` list, `AlternativeLabels`, `ConfidenceBanner`
+- `frontend/src/stores/predictionStore.js` — add treatment log actions
+
+**File added:** `frontend/src/views/TreatmentLogView.vue` — follow-up form: "did the treatment work?"
+
+### Phase 1 Verification Checklist
+- [ ] Prediction response includes `severity_level`, `affected_area_ratio`, `certainty_label`, `treatment_options`
+- [ ] Severity badge shows correct color in frontend
+- [ ] Low-confidence predictions show alternative labels
+- [ ] Treatment cards render with cost, method, type
+- [ ] `treatment_options` table is seeded with data for all 10 diseases
+- [ ] Alembic migration `0002` runs cleanly
 
 ---
 
-## 4. `frontend/` — Vue 3 (Vite + Composition API)
+## Files Summary
 
-A clean, agricultural-themed web UI for farmers/researchers to upload leaf images and receive disease predictions.
+### Phase 0 — Files Changed/Added
 
-### Folder Structure
+| File | Action | Notes |
+|---|---|---|
+| `docker-compose.yml` | Update | `postgres:16-alpine` → `postgis/postgis:16-3.4`; backend CMD → `main:app` |
+| `shared/config.py` | Verify/update | Single settings source |
+| `infrastructure/environment_variables.py` | Delete | Replaced by `shared/config.py` |
+| `interface/api_endpoints.py` | Rename to `_legacy_api_endpoints.py` | Not imported, kept as reference |
+| `main.py` | Update | Add lifespan event for ONNX load |
+| `backend/requirements.txt` | Update | Add `alembic`, `psycopg2-binary` |
+| `backend/alembic.ini` | Add | Alembic config |
+| `infrastructure/persistence/migrations/` | Add | Migration directory |
+| `infrastructure/persistence/models.py` | Implement | `PredictionRecord` ORM |
+| `infrastructure/persistence/postgres_prediction_repo.py` | Implement | `save`, `list_all`, `get_by_id` |
+| `infrastructure/ml/preprocessor.py` | Implement | `transform(image)` |
+| `infrastructure/ml/postprocessor.py` | Implement | `to_label_and_confidence()` |
+| `infrastructure/ml/resnet34_inferencer.py` | Implement | `predict(image_bytes)` |
+| `domain/services/disease_service.py` | Implement | Advice for 10 diseases |
+| `application/use_cases/predict_disease.py` | Implement | Full orchestration |
+| `application/use_cases/get_prediction_history.py` | Implement | List + get_by_id |
+| `interface/routers/prediction_router.py` | Implement | 3 working endpoints |
+| `interface/routers/health_router.py` | Fix | Real model_loaded status |
+| `infrastructure/storage/image_store.py` | Implement | File save |
+| `frontend/src/router/index.js` | Update | Add `/detect`, `/history` |
+| `frontend/src/api/client.js` | Update | Route → `/api/v1/predict` |
+| `frontend/src/views/HomeView.vue` | Update | Landing page only; fix import |
+| `frontend/src/views/DetectView.vue` | Implement | Full detection workflow |
+| `frontend/src/views/HistoryView.vue` | Implement | History table |
+| `frontend/src/components/history/PredictionList.vue` | Implement | Table component |
 
-```
-frontend/
-├── Dockerfile
-├── package.json
-├── vite.config.js
-├── index.html
-│
-├── public/
-│   └── favicon.svg
-│
-└── src/
-    ├── main.js                 # App entry, Vue + Router + Pinia setup
-    ├── App.vue                 # Root component with layout
-    │
-    ├── assets/
-    │   ├── styles/
-    │   │   ├── main.css        # CSS variables, global reset
-    │   │   └── theme.css       # Color palette (greens/earth tones)
-    │   └── icons/              # SVG icons
-    │
-    ├── components/
-    │   ├── layout/
-    │   │   ├── AppHeader.vue   # Navigation bar
-    │   │   └── AppFooter.vue
-    │   ├── prediction/
-    │   │   ├── ImageUploader.vue   # Drag-and-drop + file picker
-    │   │   ├── ImagePreview.vue    # Shows selected image
-    │   │   ├── PredictButton.vue   # Triggers API call
-    │   │   └── ResultCard.vue      # Displays label, confidence, advice
-    │   └── history/
-    │       └── PredictionList.vue  # Table of past predictions
-    │
-    ├── views/
-    │   ├── HomeView.vue        # Landing page
-    │   ├── DetectView.vue      # Main prediction workflow
-    │   └── HistoryView.vue     # Past predictions
-    │
-    ├── stores/
-    │   └── predictionStore.js  # Pinia store: state, actions for API calls
-    │
-    ├── services/
-    │   └── api.js              # Axios instance + API methods
-    │
-    └── router/
-        └── index.js            # Vue Router routes
-```
+### Phase 1 — Files Changed/Added
 
-### Core Prediction Workflow (`DetectView.vue`)
-
-```
-User opens DetectView
-    → Drops/selects image via ImageUploader
-    → ImagePreview renders the image
-    → Clicks "Detect Disease" button
-    → predictionStore.predict(file) called
-        → POST /predict to backend
-        → Loading state shown
-    → ResultCard appears with:
-        ✓ Disease label
-        ✓ Confidence percentage bar
-        ✓ Treatment advice
-        ✓ Severity indicator
-```
-
-### `stores/predictionStore.js` (Pinia)
-
-```javascript
-export const usePredictionStore = defineStore('prediction', {
-  state: () => ({
-    currentResult: null,
-    history: [],
-    loading: false,
-    error: null,
-  }),
-  actions: {
-    async predict(imageFile) {
-      this.loading = true
-      const formData = new FormData()
-      formData.append('image', imageFile)
-      const response = await api.post('/predict', formData)
-      this.currentResult = response.data
-      this.history.unshift(response.data)
-      this.loading = false
-    }
-  }
-})
-```
-
-### `services/api.js`
-
-```javascript
-import axios from 'axios'
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-  timeout: 30000,
-})
-export default api
-```
-
-### Dockerfile (frontend)
-
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json .
-RUN npm install
-COPY . .
-EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host"]
-```
+| File | Action | Notes |
+|---|---|---|
+| `infrastructure/persistence/migrations/0002_*.py` | Add | Phase 1 schema |
+| `infrastructure/persistence/models.py` | Update | Add 3 new ORM models |
+| `infrastructure/persistence/postgres_treatment_repo.py` | Add | Treatment queries |
+| `infrastructure/ml/lesion_segmenter.py` | Add | CV-based severity |
+| `domain/services/confidence_policy.py` | Add | Confidence + severity logic |
+| `domain/entities/treatment_option.py` | Add | Entity |
+| `domain/entities/diagnosis_session.py` | Add | Entity |
+| `domain/entities/treatment_log.py` | Add | Entity |
+| `domain/repositories/treatment_repository.py` | Add | ABC |
+| `application/use_cases/predict_disease.py` | Update | Severity + treatments |
+| `application/dtos/prediction_response.py` | Update | Extended fields |
+| `backend/scripts/seed_treatments.py` | Add | Seed 40 treatment rows |
+| `backend/requirements.txt` | Update | Add `opencv-python-headless` |
+| `interface/routers/prediction_router.py` | Update | 3 new endpoints |
+| `interface/routers/session_router.py` | Add | Multi-photo session |
+| `frontend/src/components/prediction/SeverityBadge.vue` | Add | |
+| `frontend/src/components/prediction/TreatmentCard.vue` | Add | |
+| `frontend/src/components/prediction/AlternativeLabels.vue` | Add | |
+| `frontend/src/components/prediction/ConfidenceBanner.vue` | Add | |
+| `frontend/src/components/ResultCard.vue` | Update | Show all new fields |
+| `frontend/src/views/TreatmentLogView.vue` | Add | Follow-up form |
 
 ---
 
-## 5. Docker Compose — Full Orchestration
+## Build Order
 
-```yaml
-# docker-compose.yml
-version: '3.9'
-
-services:
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
-      - model_artifacts:/app/model_artifacts  # Shared with model trainer
-      - prediction_uploads:/app/uploads
-    environment:
-      - MODEL_PATH=/app/model_artifacts/best_model.pth
-      - LABELS_PATH=/app/model_artifacts/class_labels.json
-    depends_on:
-      - model_trainer
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:8000
-
-  model_trainer:
-    build: ./resnet34_model
-    volumes:
-      - ./resnet34_model/data:/app/data
-      - model_artifacts:/app/outputs  # Exports here; backend reads from here
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    profiles:
-      - training  # Only runs when explicitly invoked
-
-volumes:
-  model_artifacts:      # Shared between trainer and backend
-  prediction_uploads:
-```
-
-**To run training:**
-```bash
-docker compose --profile training up model_trainer
-```
-
-**To run the full app (after training):**
-```bash
-docker compose up backend frontend
-```
+1. Phase 0.1 → 0.3 (Docker + settings + entry point) — makes Docker compose work with correct entry point
+2. Phase 0.4 → 0.6 (Alembic + ORM + repo) — database foundation
+3. Phase 0.7 → 0.9 (ML layer + DiseaseService + use cases) — business logic wiring
+4. Phase 0.10 → 0.11 (routers + ImageStore) — HTTP layer
+5. Phase 0.12 (frontend) — UI wiring
+6. Phase 0 verification — full end-to-end test before Phase 1
+7. Phase 1.1 → 1.4 (schema + domain + segmenter + repo)
+8. Phase 1.5 (seed data)
+9. Phase 1.6 → 1.7 (use case update + new endpoints)
+10. Phase 1.8 (frontend components)
+11. Phase 1 verification
 
 ---
 
-## 6. Data Flow Across All Three Services
+## Database Credentials Reference
 
-```
-                    ┌─────────────────────────────────────────┐
-                    │         resnet34_model/                 │
-                    │                                         │
-                    │  1. Prepare dataset (70:15:15 split)    │
-                    │  2. Stage A: Train classifier head      │
-                    │  3. Stage B: Fine-tune layer4 + head    │
-                    │  4. Export best_model.pth               │
-                    │     + class_labels.json                 │
-                    └──────────────┬──────────────────────────┘
-                                   │ (Docker volume: model_artifacts)
-                    ┌──────────────▼──────────────────────────┐
-                    │              backend/                   │
-                    │                                         │
-                    │  FastAPI loads model at startup         │
-                    │  POST /predict:                         │
-                    │    Interface → Application → Domain     │
-                    │    → Infrastructure (ML inferencer)     │
-                    │    → Saves prediction to SQLite         │
-                    │    → Returns JSON response              │
-                    └──────────────┬──────────────────────────┘
-                                   │ HTTP (REST API)
-                    ┌──────────────▼──────────────────────────┐
-                    │             frontend/                   │
-                    │                                         │
-                    │  Vue 3 UI:                              │
-                    │    ImageUploader → Pinia store          │
-                    │    → axios POST /predict                │
-                    │    → ResultCard renders prediction      │
-                    └─────────────────────────────────────────┘
-```
+| Setup | DATABASE_URL |
+|---|---|
+| Docker Compose (full stack) | `postgresql+asyncpg://tomato:tomato@postgres:5432/tomato_disease` |
+| Local dev (your PostgreSQL 18) | `postgresql+asyncpg://postgres:1234@localhost:5432/tomato_disease` |
+
+For local dev, create the database in pgAdmin: right-click Databases → Create → Database → name it `tomato_disease`.
 
 ---
 
-## 7. Development Phases Mapped to Capstone Project 2 Timeline
-
-| CP2 Phase        | Week | What to Build                                               |
-|------------------|------|-------------------------------------------------------------|
-| Phase 1          | 1    | Set up all 3 Docker containers; verify GPU access in trainer |
-| Phase 2          | 2    | `prepare_dataset.py` — download PlantVillage, split 70:15:15|
-| Phase 3          | 3    | `dataset.py` augmentation pipeline; verify preprocessing consistency |
-| Phase 4          | 4    | `model.py` ResNet34 init; Stage A training loop in `train.py` |
-| Phase 5          | 5–6  | Stage B fine-tuning; early stopping; checkpointing; export  |
-| Phase 6          | 7    | `evaluate.py` — metrics, confusion matrix, baseline comparison |
-| Phase 7          | 8    | Backend DDD structure; `resnet34_inferencer.py`; Vue UI     |
-| Phase 8          | 9    | Integration testing; preprocessing consistency validation   |
-| Phase 9          | 10   | Result analysis; misclassification discussion               |
-| Phase 10         | 11–12| Final report + presentation slides                          |
-
----
-
-## 8. Critical Implementation Notes
-
-### Preprocessing Consistency (Most Important)
-The **exact same** transforms must be applied in both `resnet34_model/src/dataset.py` and `backend/infrastructure/ml/preprocessor.py`. The safest approach is to define the normalization constants once in a shared config and import them in both places. Any mismatch here silently degrades prediction accuracy.
-
-### Model Artifact Sharing
-The Docker named volume `model_artifacts` is the bridge between the training container and the backend container. After training completes, `best_model.pth` and `class_labels.json` land in this volume, and the backend reads them on startup.
-
-### DDD in Python — Simple Rule
-- `domain/` — never import FastAPI, SQLAlchemy, or torch
-- `application/` — never import FastAPI or SQLAlchemy directly
-- `infrastructure/` — implements the abstract interfaces defined in `domain/repositories/`
-- `interface/` — only imports from `application/` (never directly from `domain/` or `infrastructure/`)
-
-### Vue Frontend ↔ Backend CORS
-The backend must allow requests from `http://localhost:5173` during development. This is configured in `backend/interface/middleware/cors.py` and applied in `main.py`.
-
-### Class Label Alignment
-When `export.py` writes `class_labels.json`, it must capture the exact `dataset.class_to_idx` mapping from PyTorch's `ImageFolder`. This ensures index 0 in the model output always maps to the same disease name in both evaluation and the deployed API.
-
----
-
-## 9. Technology Summary
-
-| Layer             | Technology               | Why                                              |
-|-------------------|--------------------------|--------------------------------------------------|
-| ML Training       | PyTorch 2.2 + Torchvision| Official ResNet34 pretrained weights available   |
-| Backend Framework | FastAPI                  | Async, fast, auto-generated OpenAPI docs         |
-| Backend ORM       | SQLAlchemy + SQLite      | Lightweight, no extra DB container needed        |
-| Frontend          | Vue 3 + Vite + Pinia     | Composition API, fast dev server, simple state   |
-| HTTP Client       | Axios                    | Standard, Promise-based, easy interceptors       |
-| Containerization  | Docker + Docker Compose  | Reproducible environment across machines         |
-| GPU Support       | NVIDIA Container Toolkit | Enables CUDA in training container               |
+**Awaiting your approval to begin implementation.**

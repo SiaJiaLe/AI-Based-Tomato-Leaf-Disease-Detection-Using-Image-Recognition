@@ -1,11 +1,18 @@
-import os
-from pydantic_settings import BaseSettings
+"""Legacy settings shim — proxies to shared.config.settings."""
+from shared.config import settings as _settings
 
-class Settings(BaseSettings):
+
+class _LegacySettings:
     PROJECT_NAME: str = "Tomato Disease Detection API"
     VERSION: str = "1.0.0"
-    
-    MODEL_PATH: str = os.getenv("MODEL_PATH", "/app/model/best_model.onnx")
-    LABELS_PATH: str = os.getenv("LABELS_PATH", "/app/model/class_labels.json")
 
-settings = Settings()
+    @property
+    def MODEL_PATH(self) -> str:
+        return _settings.model_path
+
+    @property
+    def LABELS_PATH(self) -> str:
+        return _settings.labels_path
+
+
+settings = _LegacySettings()
