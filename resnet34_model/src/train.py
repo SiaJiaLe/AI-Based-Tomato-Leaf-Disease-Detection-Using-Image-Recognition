@@ -49,7 +49,8 @@ def main():
     
     print("Initializing ResNet34...")
     model = TomatoResNet34(num_classes).to(device)
-    criterion = nn.CrossEntropyLoss()
+    # Advanced Regularization: Label smoothing to prevent overconfidence on noisy real-world data
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     
     train_losses, val_losses, train_accs, val_accs = [], [], [], []
     
@@ -65,9 +66,14 @@ def main():
         train_accs.append(t_acc); val_accs.append(v_acc)
         print(f"Stage A Epoch {epoch+1}/{STAGE_A_EPOCHS} | Train Loss: {t_loss:.4f} Acc: {t_acc:.4f} | Val Loss: {v_loss:.4f} Acc: {v_acc:.4f} | {time.time()-t0:.1f}s")
         
-    print("\n--- STAGE B: Fine-tuning Layer 4 & Head ---")
-    model.unfreeze_layer4()
-    optimizer_B = optim.Adam(model.parameters(), lr=STAGE_B_LR)
+    print("\n--- STAGE B: Fine-tuning Layer 3, Layer 4 & Head ---")
+    model.unfreeze_layer3_and_4()
+    # Advanced Regularization: Parameter groups for differential learning rates
+    optimizer_B = optim.Adam([
+        {'params': model.model.layer3.parameters(), 'lr': 1e-5}, # Very slow tuning for mid-level features
+        {'params': model.model.layer4.parameters(), 'lr': 1e-4}, # Moderate tuning for high-level features
+        {'params': model.model.fc.parameters(),     'lr': 1e-3}, # Fast tuning for classifier
+    ])
     early_stopping = EarlyStopping(patience=EARLY_STOPPING_PATIENCE)
     best_val_loss = float('inf')
     

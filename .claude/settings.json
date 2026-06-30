@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash",
+      "Bash (npm install *)",
+      "Edit",
+      "WebFetch",
+      "Read",
+      "Write"
+    ]
+  }
+}

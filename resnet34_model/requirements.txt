@@ -1,5 +1,7 @@
-﻿torch==2.2.0
-torchvision==0.17.0
+torch>=2.2.0
+torchvision>=0.17.0
+albumentations>=1.4.0
+opencv-python-headless>=4.9.0
 numpy
 scikit-learn
 matplotlib
