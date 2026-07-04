@@ -26,18 +26,18 @@ class AlbumentationsDataset(datasets.ImageFolder):
 def get_dataloaders():
     # Advanced Real-World Augmentation Pipeline
     train_transforms = A.Compose([
-        A.RandomResizedCrop(size=(IMAGE_SIZE, IMAGE_SIZE), scale=(0.6, 1.0)),
+        A.RandomResizedCrop(size=(IMAGE_SIZE, IMAGE_SIZE), scale=(0.7, 1.0)),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.3),
-        A.Affine(scale=(0.8, 1.2), translate_percent=(-0.1, 0.1), rotate=(-35, 35), p=0.6),
-        A.Perspective(scale=(0.05, 0.15), p=0.3),
-        A.ElasticTransform(alpha=80, sigma=80 * 0.05, p=0.2), # Simulates leaf curl
-        A.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3, hue=0.1, p=0.7),
-        A.RandomShadow(p=0.3),
-        A.GaussianBlur(blur_limit=(3, 5), p=0.25),
-        A.GaussNoise(p=0.25),
+        A.Affine(scale=(0.9, 1.1), translate_percent=(-0.05, 0.05), rotate=(-20, 20), p=0.4),
+        A.Perspective(scale=(0.05, 0.1), p=0.2),
+        A.ElasticTransform(alpha=80, sigma=80 * 0.05, p=0.15), # Simulates leaf curl
+        A.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05, p=0.3),
+        A.RandomShadow(p=0.15),
+        A.GaussianBlur(blur_limit=(3, 5), p=0.2),
+        A.GaussNoise(p=0.2),
         A.ImageCompression(quality_range=(70, 100), p=0.2),
-        A.CoarseDropout(num_holes_range=(1, 8), hole_height_range=(1, 20), hole_width_range=(1, 20), p=0.3),
+        A.CoarseDropout(num_holes_range=(1, 5), hole_height_range=(1, 15), hole_width_range=(1, 15), p=0.15),
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])
