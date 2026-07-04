@@ -19,7 +19,7 @@ TARGET_CLASSES = [
 
 # Map YOLO class names to our exact target folders. None = Ignore
 CLASS_MAPPING = {
-    # real_data_1 classes
+    # real_data_1 & 2 classes
     "0": None, # Ignore unknown class 0
     "Early Blight": "Tomato___Early_blight",
     "Early_blight": "Tomato___Early_blight",
@@ -36,14 +36,22 @@ CLASS_MAPPING = {
     "Tomato leaf": None, # Ignore vague label
     "Tomato leaf bacterial spot": "Tomato___Bacterial_spot",
     "Yellow Leaf Curl Virus": "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
-    
-    # real_data_2 specific classes (the rest are handled above)
     "Leaf Miner": None, # Ignore
+    
+    # real_dataset_3, 4, 5 classes (newly added)
+    "Bacterial Spot": "Tomato___Bacterial_spot",
+    "Early_Blight": "Tomato___Early_blight",
+    "Late_blight": "Tomato___Late_blight",
+    "Target_Spot": "Tomato___Target_Spot",
+    "black spot": None, # Ignore
 }
 
 # The class names list exactly as they appear in the data.yaml files
 DATASET_1_NAMES = ['0', 'Early Blight', 'Early_blight', 'Healthy', 'Iron Deficiency', 'Late Blight', 'Leaf Mold', 'Leaf_Miner', 'Mosaic Virus', 'Septoria', 'Spider Mites', 'Tomato Early blight leaf', 'Tomato Septoria leaf spot', 'Tomato leaf', 'Tomato leaf bacterial spot', 'Yellow Leaf Curl Virus']
 DATASET_2_NAMES = ['Early Blight', 'Healthy', 'Late Blight', 'Leaf Miner', 'Leaf Mold', 'Mosaic Virus', 'Septoria', 'Spider Mites', 'Yellow Leaf Curl Virus']
+DATASET_3_NAMES = ['Bacterial Spot', 'Early_Blight', 'Healthy', 'Late_blight', 'Leaf Mold', 'Target_Spot', 'black spot']
+DATASET_4_NAMES = ['Early Blight', 'Healthy', 'Late Blight', 'Leaf Miner', 'Leaf Mold', 'Mosaic Virus', 'Septoria', 'Spider Mites', 'Yellow Leaf Curl Virus']
+DATASET_5_NAMES = ['Early Blight', 'Healthy', 'Late Blight', 'Leaf Miner', 'Leaf Mold', 'Mosaic Virus', 'Septoria', 'Spider Mites', 'Yellow Leaf Curl Virus']
 
 def process_yolo_dataset(dataset_path, class_names_list, raw_data_dir):
     dataset_path = Path(dataset_path)
@@ -115,6 +123,9 @@ if __name__ == "__main__":
     # Paths to the downloaded YOLO datasets
     real_data_1_path = base_dir / "real_data_1"
     real_data_2_path = base_dir / "real_data_2"
+    real_data_3_path = base_dir / "real_dataset_3"
+    real_data_4_path = base_dir / "real_dataset_4"
+    real_data_5_path = base_dir / "real_dataset_5"
     
     # Path to the model's raw data directory
     raw_data_dir = base_dir / "resnet34_model" / "data" / "raw"
@@ -123,5 +134,8 @@ if __name__ == "__main__":
     
     process_yolo_dataset(real_data_1_path, DATASET_1_NAMES, raw_data_dir)
     process_yolo_dataset(real_data_2_path, DATASET_2_NAMES, raw_data_dir)
+    process_yolo_dataset(real_data_3_path, DATASET_3_NAMES, raw_data_dir)
+    process_yolo_dataset(real_data_4_path, DATASET_4_NAMES, raw_data_dir)
+    process_yolo_dataset(real_data_5_path, DATASET_5_NAMES, raw_data_dir)
     
     print("\nData merging complete! You can now run the normal prepare_dataset.py script.")
