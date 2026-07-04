@@ -16,13 +16,16 @@ def _standard_head(in_features: int, num_classes: int) -> nn.Sequential:
 
 
 def build_model(num_classes: int) -> nn.Module:
-    """AlexNet with ImageNet-pretrained weights in its standard configuration."""
+    """
+    AlexNet with ImageNet-pretrained weights in its standard configuration.
+    torchvision's AlexNet.forward() already applies model.avgpool
+    (AdaptiveAvgPool2d((6, 6))) and flattens to 2D before calling
+    model.classifier, so the replacement classifier must NOT repeat
+    that pooling/flatten step — it receives an already-flat 256*6*6
+    vector.
+    """
     model = models.alexnet(weights=models.AlexNet_Weights.DEFAULT)
-    model.classifier = nn.Sequential(
-        nn.AdaptiveAvgPool2d((6, 6)),
-        nn.Flatten(),
-        _standard_head(256 * 6 * 6, num_classes),
-    )
+    model.classifier = _standard_head(256 * 6 * 6, num_classes)
     return model
 
 
