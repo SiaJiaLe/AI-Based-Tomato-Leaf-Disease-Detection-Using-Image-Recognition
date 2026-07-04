@@ -1,0 +1,24 @@
+# EfficientNet-B0 Baseline
+
+Standard-configuration EfficientNet-B0 (via `timm`) baseline for comparison
+against the proposed ResNet34 solution in `resnet34_model/`. Trains and
+evaluates on the same `resnet34_model/data/processed` split, but uses:
+
+- ImageNet-pretrained weights with a standard `Dropout(0.2) -> Linear` head
+- Basic augmentation only (random-resized crop, horizontal flip, small rotation)
+- No attention modules, no weighted sampler
+- Its own independent training budget in `src/config.py`
+- Standard cross-entropy loss (no label smoothing)
+- Standard fine-tune of the last two MBConv block groups (own
+  architecture-native unfreeze ratio, not copied from ResNet34)
+
+## Usage
+
+```powershell
+cd EfficientNetB0
+pip install -r requirements.txt
+python src/train.py
+python src/evaluate.py
+```
+
+Outputs are written to `./outputs`.

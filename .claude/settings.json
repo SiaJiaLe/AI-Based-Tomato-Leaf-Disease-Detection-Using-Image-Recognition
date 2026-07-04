@@ -8,5 +8,8 @@
       "Read",
       "Write"
     ]
+  },
+  "worktree": {
+    "bgIsolation": "none"
   }
 }
