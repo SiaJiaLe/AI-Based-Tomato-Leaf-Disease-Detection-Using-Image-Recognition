@@ -34,21 +34,23 @@ def classifier_parameters(model: nn.Module):
 
 def get_stage_b_params(model: nn.Module) -> list:
     """
-    EfficientNet-B0 has 9 MBConv block groups (model.blocks[0] to [8]).
-    Standard fine-tuning: unfreeze the last two block groups (~25% of the
-    backbone) plus the classifier — timm has no named layer3/layer4
-    stages, so requires_grad is set manually per block group.
+    EfficientNet-B0 has 7 MBConv stage groups (model.blocks[0] to [6]),
+    not 9 — confirmed by inspecting timm's actual module structure after
+    an earlier IndexError at blocks[7]. Standard fine-tuning: unfreeze
+    the last two stage groups (~25% of the backbone) plus the classifier
+    — timm has no named layer3/layer4 stages, so requires_grad is set
+    manually per block group.
     """
     for p in model.parameters():
         p.requires_grad = False
-    for group in [model.blocks[7], model.blocks[8]]:
+    for group in [model.blocks[5], model.blocks[6]]:
         for p in group.parameters():
             p.requires_grad = True
     for p in model.classifier.parameters():
         p.requires_grad = True
 
     return [
-        {"params": model.blocks[7].parameters(), "lr": 1e-5},
-        {"params": model.blocks[8].parameters(), "lr": 1e-4},
+        {"params": model.blocks[5].parameters(), "lr": 1e-5},
+        {"params": model.blocks[6].parameters(), "lr": 1e-4},
         {"params": model.classifier.parameters(), "lr": 1e-3},
     ]
