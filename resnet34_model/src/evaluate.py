@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 import torch.nn as nn
 from sklearn.metrics import classification_report, confusion_matrix
@@ -66,7 +67,26 @@ def main():
         f.write("="*60 + "\n\n")
         f.write(report)
     print(f"Saved classification report to {report_path}")
-    
+
+    # Save eval_results.json — same schema as the baseline models'
+    # evaluate.py, so compare_models.py can read this model's results
+    # alongside the 8 baselines.
+    accuracy = float((y_true == y_pred).mean())
+    report_dict = classification_report(y_true, y_pred, target_names=class_names, digits=4, output_dict=True)
+    eval_results = {
+        "model": "ResNet34 (proposed)",
+        "accuracy": accuracy,
+        "macro_f1": report_dict["macro avg"]["f1-score"],
+        "weighted_f1": report_dict["weighted avg"]["f1-score"],
+        "classification_report": report_dict,
+    }
+    evaluation_report_dir = os.path.join(OUTPUT_DIR, "evaluation_report")
+    os.makedirs(evaluation_report_dir, exist_ok=True)
+    results_path = os.path.join(evaluation_report_dir, "eval_results.json")
+    with open(results_path, "w") as f:
+        json.dump(eval_results, f, indent=2)
+    print(f"Saved eval results to {results_path}")
+
     # Generate Confusion Matrix
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(12, 10))
