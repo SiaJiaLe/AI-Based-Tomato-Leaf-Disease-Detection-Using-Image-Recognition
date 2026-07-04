@@ -34,23 +34,31 @@ def classifier_parameters(model: nn.Module):
 
 def get_stage_b_params(model: nn.Module) -> list:
     """
-    EfficientNet-B0 has 7 MBConv stage groups (model.blocks[0] to [6]),
-    not 9 — confirmed by inspecting timm's actual module structure after
-    an earlier IndexError at blocks[7]. Standard fine-tuning: unfreeze
-    the last two stage groups (~25% of the backbone) plus the classifier
-    — timm has no named layer3/layer4 stages, so requires_grad is set
-    manually per block group.
+    Standard fine-tuning: unfreeze the last two MBConv stage groups
+    (~25% of the backbone) plus the classifier — timm has no named
+    layer3/layer4 stages, so requires_grad is set manually per group.
+
+    Indices are computed from len(model.blocks) rather than hardcoded:
+    a prior hardcoded assumption (9 groups, indices 7/8) was wrong —
+    this timm version of efficientnet_b0 only exposes 7 groups
+    (indices 0-6) — which crashed Stage A->B with an IndexError.
+    Deriving the last two indices dynamically avoids relying on that
+    exact count again.
     """
     for p in model.parameters():
         p.requires_grad = False
-    for group in [model.blocks[5], model.blocks[6]]:
+
+    num_blocks = len(model.blocks)
+    second_last_idx, last_idx = num_blocks - 2, num_blocks - 1
+
+    for group in [model.blocks[second_last_idx], model.blocks[last_idx]]:
         for p in group.parameters():
             p.requires_grad = True
     for p in model.classifier.parameters():
         p.requires_grad = True
 
     return [
-        {"params": model.blocks[5].parameters(), "lr": 1e-5},
-        {"params": model.blocks[6].parameters(), "lr": 1e-4},
+        {"params": model.blocks[second_last_idx].parameters(), "lr": 1e-5},
+        {"params": model.blocks[last_idx].parameters(), "lr": 1e-4},
         {"params": model.classifier.parameters(), "lr": 1e-3},
     ]
