@@ -26,3 +26,17 @@ python src/evaluate.py
 Outputs (`best_model.pth`, `class_labels.json`, `training_history.png`,
 `classification_report.txt`, `eval_results.json`, `cm_processed_test.png`)
 are written to `./outputs`.
+
+## Real-world evaluation
+
+Once `resnet34_model/data/real_environment_test/` is populated with field
+photos (one subfolder per disease class), run:
+
+```powershell
+python src/evaluate_real_world.py
+```
+
+Requires training to already be complete. Writes
+`eval_results_real_world.json`, `classification_report_real_world.txt`,
+and `cm_real_world_test.png` to `./outputs`, alongside the controlled-set
+results.

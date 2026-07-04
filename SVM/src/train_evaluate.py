@@ -1,5 +1,6 @@
 import os
 import json
+import joblib
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,6 +35,12 @@ def main():
     y_pred = clf.predict(X_test)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Persist the fitted classifier + label mapping so
+    # evaluate_real_world.py can reuse it without refitting.
+    joblib.dump(clf, os.path.join(OUTPUT_DIR, "classifier.joblib"))
+    with open(os.path.join(OUTPUT_DIR, "class_labels.json"), "w") as f:
+        json.dump(idx_to_class, f, indent=2)
 
     report_text = classification_report(y_test, y_pred, target_names=class_names, digits=4)
     print(report_text)

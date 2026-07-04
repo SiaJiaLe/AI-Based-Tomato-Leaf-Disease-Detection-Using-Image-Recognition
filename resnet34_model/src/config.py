@@ -2,6 +2,10 @@ import os
 
 BASE_DIR = os.path.expanduser("~/AI-Based-Tomato-Leaf-Disease-Detection-Using-Image-Recognition/resnet34_model")
 DATA_DIR = os.path.join(BASE_DIR, "data", "processed")
+# Held-out real-world field photos, sibling to processed/ — never used
+# for training/val, only for the separate real-world generalization
+# evaluation (see real_world_generalization_plan.md, Pillar 5).
+REAL_WORLD_DIR = os.path.join(BASE_DIR, "data", "real_environment_test")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 
 IMAGE_SIZE = 224

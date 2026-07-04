@@ -49,10 +49,11 @@ def build_feature_extractor(device):
     return model.to(device)
 
 
-def extract_split(split_name, device):
-    """Returns (features [N, 512], labels [N], class_to_idx)."""
-    split_dir = os.path.join(DATA_DIR, split_name)
-    dataset = AlbumentationsDataset(split_dir, transform=_eval_transform())
+def extract_folder(folder_path, device):
+    """Returns (features [N, 512], labels [N], class_to_idx) for any
+    ImageFolder-structured directory (used for both the processed
+    train/test splits and the real-world test set)."""
+    dataset = AlbumentationsDataset(folder_path, transform=_eval_transform())
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
     extractor = build_feature_extractor(device)
@@ -66,3 +67,9 @@ def extract_split(split_name, device):
             labels.append(targets.numpy())
 
     return np.concatenate(features), np.concatenate(labels), dataset.class_to_idx
+
+
+def extract_split(split_name, device):
+    """Returns (features [N, 512], labels [N], class_to_idx) for a
+    named split (e.g. "train", "test") under DATA_DIR."""
+    return extract_folder(os.path.join(DATA_DIR, split_name), device)
