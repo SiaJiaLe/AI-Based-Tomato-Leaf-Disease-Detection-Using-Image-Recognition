@@ -7,7 +7,8 @@ ResNet34 solution in `resnet34_model/`. Trains and evaluates on the same
 - ImageNet-pretrained weights with a standard `Dropout(0.2) -> Linear` head
 - Basic augmentation only (random-resized crop, horizontal flip, small rotation)
 - No attention modules, no weighted sampler
-- Its own independent training budget in `src/config.py`
+- Its own `src/config.py`, with epoch/patience values set to match
+  ResNet34's budget (15/25/7) so architecture is the only variable
 - Standard cross-entropy loss (no label smoothing)
 - Standard fine-tune of block4/block5 (own architecture-native unfreeze
   targets, not copied from the proposed ResNet34's layer3/layer4 scheme)

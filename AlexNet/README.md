@@ -9,8 +9,9 @@ ResNet34 solution in `resnet34_model/`. Trains and evaluates on the same
 - Basic augmentation only: random-resized crop, horizontal flip, small
   rotation (not the proposed model's advanced field-condition pipeline)
 - No attention modules, no weighted sampler
-- Its own independent training budget in `src/config.py` (not imported
-  from `resnet34_model/src/config.py`)
+- Its own `src/config.py` (not imported from `resnet34_model/src/config.py`),
+  with epoch/patience values set to match ResNet34's budget (15/25/7)
+  so architecture is the only variable in the comparison
 - Standard cross-entropy loss (no label smoothing)
 
 ## Usage

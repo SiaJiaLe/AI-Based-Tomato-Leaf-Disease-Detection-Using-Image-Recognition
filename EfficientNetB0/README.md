@@ -7,7 +7,8 @@ evaluates on the same `resnet34_model/data/processed` split, but uses:
 - ImageNet-pretrained weights with a standard `Dropout(0.2) -> Linear` head
 - Basic augmentation only (random-resized crop, horizontal flip, small rotation)
 - No attention modules, no weighted sampler
-- Its own independent training budget in `src/config.py`
+- Its own `src/config.py`, with epoch/patience values set to match
+  ResNet34's budget (15/25/7) so architecture is the only variable
 - Standard cross-entropy loss (no label smoothing)
 - Standard fine-tune of the last two MBConv block groups (own
   architecture-native unfreeze ratio, not copied from ResNet34)

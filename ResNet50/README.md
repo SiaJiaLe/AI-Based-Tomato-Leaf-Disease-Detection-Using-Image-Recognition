@@ -8,7 +8,8 @@ the same `resnet34_model/data/processed` split, but uses:
   (not the proposed model's BatchNorm/Dropout/2-layer head)
 - Basic augmentation only (random-resized crop, horizontal flip, small rotation)
 - No CBAM attention, no weighted sampler
-- Its own independent training budget in `src/config.py`
+- Its own `src/config.py`, with epoch/patience values set to match
+  ResNet34's budget (15/25/7) so architecture is the only variable
 - Standard cross-entropy loss (no label smoothing)
 - Fine-tunes layer3/layer4/fc — the same *named* stages as the proposed
   ResNet34 (since ResNet50 shares that stage naming), but without
