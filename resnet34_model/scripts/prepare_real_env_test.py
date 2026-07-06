@@ -53,11 +53,17 @@ MAPPING_9 = {
     "Yellow Leaf Curl Virus": "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
 }
 
+# Target Spot Dataset
+MAPPING_TS = {
+    "TS": "Tomato___Target_Spot"
+}
+
 # Class names exactly as they appear in the data.yaml files
 NAMES_6 = ['Tomato Early blight leaf', 'Tomato Septoria leaf spot', 'Tomato leaf', 'Tomato leaf bacterial spot', 'Tomato leaf late blight', 'Tomato leaf mosaic virus', 'Tomato leaf yellow virus', 'Tomato mold leaf']
 NAMES_7 = ['Bacterial Spot', 'Early_Blight', 'Healthy', 'Late_blight', 'Leaf Mold', 'Target_Spot', 'black spot']
 NAMES_8 = ['Early Blight', 'Healthy', 'Late Blight', 'Leaf Miner', 'Leaf Mold', 'Mosaic Virus', 'Septoria', 'Yellow Leaf Curl Virus']
 NAMES_9 = ['Early Blight', 'Healthy', 'Late Blight', 'Leaf Miner', 'Leaf Mold', 'Mosaic Virus', 'Septoria', 'Spider Mites', 'Yellow Leaf Curl Virus']
+NAMES_TS = ['TS']
 
 def process_yolo_dataset(dataset_path, class_names_list, class_mapping, target_base_dir):
     dataset_path = Path(dataset_path)
@@ -130,17 +136,21 @@ if __name__ == "__main__":
     ds7 = base_dir / "real_dataset_7"
     ds8 = base_dir / "real_dataset_8"
     ds9 = base_dir / "real_dataset_9"
+    ds_ts = base_dir / "real_dataset_target_spot"
     
     # Target directory for the real environment test set
     target_dir = base_dir / "resnet34_model" / "data" / "processed" / "real_environment_test"
     target_dir.mkdir(parents=True, exist_ok=True)
     
-    print("Extracting Real Environment Test Datasets (6, 7, 8, 9)...")
+    print("Extracting Real Environment Test Dataset (Target Spot ONLY)...")
     print(f"Target folder: {target_dir}")
     
-    process_yolo_dataset(ds6, NAMES_6, MAPPING_6, target_dir)
-    process_yolo_dataset(ds7, NAMES_7, MAPPING_7, target_dir)
-    process_yolo_dataset(ds8, NAMES_8, MAPPING_8, target_dir)
-    process_yolo_dataset(ds9, NAMES_9, MAPPING_9, target_dir)
+    # process_yolo_dataset(ds6, NAMES_6, MAPPING_6, target_dir)
+    # process_yolo_dataset(ds7, NAMES_7, MAPPING_7, target_dir)
+    # process_yolo_dataset(ds8, NAMES_8, MAPPING_8, target_dir)
+    # process_yolo_dataset(ds9, NAMES_9, MAPPING_9, target_dir)
     
-    print("\nExtraction complete! All test images have been placed into real_environment_test.")
+    # ONLY process the TS dataset
+    process_yolo_dataset(ds_ts, NAMES_TS, MAPPING_TS, target_dir)
+    
+    print("\nExtraction complete! Target spot test images have been placed into real_environment_test.")
