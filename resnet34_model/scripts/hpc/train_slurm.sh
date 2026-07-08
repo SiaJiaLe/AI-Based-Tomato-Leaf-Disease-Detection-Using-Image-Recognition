@@ -3,9 +3,8 @@
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
 #SBATCH --time=24:00:00
-#SBATCH --gres=gpu:1
-# TODO: If your HPC requires a specific partition, run 'sinfo' to find it and uncomment/edit the line below:
-# #SBATCH --partition=gpu
+#SBATCH --gres=gpu:l4:1
+#SBATCH --partition=gpu-24c-l4-4g
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
