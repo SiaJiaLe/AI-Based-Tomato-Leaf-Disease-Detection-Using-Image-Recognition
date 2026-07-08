@@ -1,0 +1,10 @@
+# Dependencies for the CP2 ablation runner (experiments/).
+# Install into the tomato-ml conda env:  pip install -r experiments/requirements.txt
+torch
+torchvision
+timm
+albumentations
+scikit-learn
+matplotlib
+numpy
+pyyaml
