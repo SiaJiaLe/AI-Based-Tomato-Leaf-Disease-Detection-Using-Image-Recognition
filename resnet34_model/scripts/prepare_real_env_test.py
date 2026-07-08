@@ -142,15 +142,14 @@ if __name__ == "__main__":
     target_dir = base_dir / "resnet34_model" / "data" / "processed" / "real_environment_test"
     target_dir.mkdir(parents=True, exist_ok=True)
     
-    print("Extracting Real Environment Test Dataset (Target Spot ONLY)...")
+    print("Extracting Real Environment Test Datasets (6, 7, 8, 9, TS)...")
     print(f"Target folder: {target_dir}")
     
-    # process_yolo_dataset(ds6, NAMES_6, MAPPING_6, target_dir)
-    # process_yolo_dataset(ds7, NAMES_7, MAPPING_7, target_dir)
-    # process_yolo_dataset(ds8, NAMES_8, MAPPING_8, target_dir)
-    # process_yolo_dataset(ds9, NAMES_9, MAPPING_9, target_dir)
+    process_yolo_dataset(ds6, NAMES_6, MAPPING_6, target_dir)
+    process_yolo_dataset(ds7, NAMES_7, MAPPING_7, target_dir)
+    process_yolo_dataset(ds8, NAMES_8, MAPPING_8, target_dir)
+    process_yolo_dataset(ds9, NAMES_9, MAPPING_9, target_dir)
     
-    # ONLY process the TS dataset
     process_yolo_dataset(ds_ts, NAMES_TS, MAPPING_TS, target_dir)
     
-    print("\nExtraction complete! Target spot test images have been placed into real_environment_test.")
+    print("\nExtraction complete! All test images have been placed into real_environment_test.")
