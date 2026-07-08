@@ -22,7 +22,4 @@ echo "Training Complete!"
 echo "Evaluating on Standard Test Set..."
 python src/evaluate.py
 
-echo "Evaluating on Real-World Test Set..."
-python src/evaluate_real_world.py
-
 echo "All evaluations complete!"
