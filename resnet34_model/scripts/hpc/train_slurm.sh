@@ -4,8 +4,8 @@
 #SBATCH --error=logs/train_%j.err
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpu:1
-# TODO: set partition for Sunway HPC
-#SBATCH --partition=gpu
+# TODO: If your HPC requires a specific partition, run 'sinfo' to find it and uncomment/edit the line below:
+# #SBATCH --partition=gpu
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
