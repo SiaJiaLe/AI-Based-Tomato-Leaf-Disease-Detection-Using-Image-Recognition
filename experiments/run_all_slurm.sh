@@ -16,8 +16,12 @@ mkdir -p experiments/results
 eval "$(conda shell.bash hook)"
 conda activate tomato-ml
 
-echo "Starting CP2 ablation — all 12 runs..."
+echo "Structural smoke test (all 6 backbones, OFF+ON)..."
+python -m experiments.smoke_test   # set -e aborts the job here if any backbone fails to build
+
+echo "Starting CP2 ablation — all 12 runs (train + evaluate on test AND real-world)..."
 python -m experiments.run --all
-echo "Ablation complete. Building comparison tables + figure..."
+
+echo "Ablation complete. Building master + ablation tables and gap figure..."
 python -m experiments.compare
-echo "Done."
+echo "Done. Results in experiments/results/."
