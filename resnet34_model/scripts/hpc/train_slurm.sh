@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 #SBATCH --job-name=tomato-train
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
@@ -11,12 +11,18 @@ set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
 mkdir -p logs
 
-# Path A: container (uncomment and set image path)
-# bash scripts/hpc/run_training_docker.sh
+# Activate the tomato-ml conda environment
+eval "$(conda shell.bash hook)"
+conda activate tomato-ml
 
-# Path B: venv fallback (uncomment)
-# source ~/venvs/tomato-ml/bin/activate
-# module load cuda
-# python src/train.py
+echo "Starting ResNet34 Training..."
+python src/train.py
+echo "Training Complete!"
 
-echo "Configure train_slurm.sh for Sunway HPC before submitting."
+echo "Evaluating on Standard Test Set..."
+python src/evaluate.py
+
+echo "Evaluating on Real-World Test Set..."
+python src/evaluate_real_world.py
+
+echo "All evaluations complete!"
