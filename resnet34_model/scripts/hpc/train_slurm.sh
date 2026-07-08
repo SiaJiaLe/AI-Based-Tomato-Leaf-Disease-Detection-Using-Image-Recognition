@@ -7,7 +7,7 @@
 #SBATCH --partition=gpu-24c-l4-4g
 
 set -euo pipefail
-cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
+cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}/resnet34_model"
 mkdir -p logs
 
 # Activate the tomato-ml conda environment
