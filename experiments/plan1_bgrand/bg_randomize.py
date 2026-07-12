@@ -18,6 +18,7 @@ soft edge sits INSIDE the true leaf boundary and no original background bleeds
 through as a halo (the artifact that hurt the first classical run). Segmentation
 keys on the leaf, not on green, so brown/yellow lesions stay inside the mask.
 """
+import hashlib
 import os
 
 import albumentations as A
@@ -138,6 +139,7 @@ class BackgroundRandomize(A.ImageOnlyTransform):
     def __init__(self, background_dir: str, prob: float = 0.5,
                  boundary_blur: bool = True, segmentation: str = "hsv_threshold",
                  erode_px: int = 3, rembg_model: str = "u2net",
+                 mask_cache_dir: str = None,
                  min_fg: float = 0.05, max_fg: float = 0.97, p: float = None):
         super().__init__(p=prob if p is None else p)
         self.background_dir = background_dir
@@ -145,21 +147,48 @@ class BackgroundRandomize(A.ImageOnlyTransform):
         self.segmentation = segmentation
         self.erode_px = erode_px
         self.rembg_model = rembg_model
+        self.mask_cache_dir = mask_cache_dir
         self.min_fg = min_fg
         self.max_fg = max_fg
         self._session = None  # rembg session; built lazily, per worker process
         self.backgrounds = _load_backgrounds(background_dir)
+        if mask_cache_dir:
+            os.makedirs(mask_cache_dir, exist_ok=True)
 
     def _get_session(self):
         if self._session is None:
             self._session = make_rembg_session(self.rembg_model)
         return self._session
 
-    def apply(self, img, **params):
+    def _segment(self, img):
         if self.segmentation == "pretrained":
-            mask = segment_leaf_rembg(img, self._get_session())
-        else:
-            mask = segment_leaf(img)
+            return segment_leaf_rembg(img, self._get_session())
+        return segment_leaf(img)
+
+    def _mask(self, img):
+        """Segment `img`, caching the result to disk keyed by image content.
+
+        The mask for a given source image is identical every epoch, so we only
+        pay the (expensive, CPU) U^2-Net pass once per image across the whole
+        run instead of once per image per epoch. The random background is still
+        chosen fresh in composite(), so per-epoch variety is preserved.
+        """
+        if not self.mask_cache_dir:
+            return self._segment(img)
+        key = hashlib.md5(np.ascontiguousarray(img).tobytes()).hexdigest()
+        path = os.path.join(self.mask_cache_dir, f"{self.segmentation}_{key}.png")
+        if os.path.exists(path):
+            cached = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if cached is not None and cached.shape == img.shape[:2]:
+                return cached
+        mask = self._segment(img)
+        tmp = f"{path}.tmp{os.getpid()}"  # atomic write so parallel workers never read a partial file
+        if cv2.imwrite(tmp, mask):
+            os.replace(tmp, path)
+        return mask
+
+    def apply(self, img, **params):
+        mask = self._mask(img)
         fg_frac = float((mask > 0).mean())
         if fg_frac < self.min_fg or fg_frac > self.max_fg:
             return img  # segmentation unreliable — keep the original
@@ -175,4 +204,4 @@ class BackgroundRandomize(A.ImageOnlyTransform):
 
     def get_transform_init_args_names(self):
         return ("background_dir", "boundary_blur", "segmentation", "erode_px",
-                "rembg_model", "min_fg", "max_fg")
+                "rembg_model", "mask_cache_dir", "min_fg", "max_fg")

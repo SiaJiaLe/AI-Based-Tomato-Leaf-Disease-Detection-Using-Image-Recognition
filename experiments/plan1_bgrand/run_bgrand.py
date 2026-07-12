@@ -29,6 +29,8 @@ def load_config(path: str) -> dict:
     cfg["real_world_dir"] = os.path.join(REPO_ROOT, cfg["real_world_dir"])
     bg = cfg["background_randomization"]
     bg["background_dir"] = os.path.join(REPO_ROOT, bg["background_dir"])
+    if bg.get("mask_cache_dir"):
+        bg["mask_cache_dir"] = os.path.join(REPO_ROOT, bg["mask_cache_dir"])
     return cfg
 
 

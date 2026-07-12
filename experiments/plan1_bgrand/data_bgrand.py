@@ -32,6 +32,7 @@ def build_train_transform_bgrand(image_size: int, advanced_augmentation: bool,
         boundary_blur=bg_cfg.get("boundary_blur", True),
         segmentation=bg_cfg.get("segmentation", "hsv_threshold"),
         erode_px=bg_cfg.get("mask_erode_px", 3),
+        mask_cache_dir=bg_cfg.get("mask_cache_dir"),
     )]
     ops += _basic_four(image_size)
     if advanced_augmentation:
