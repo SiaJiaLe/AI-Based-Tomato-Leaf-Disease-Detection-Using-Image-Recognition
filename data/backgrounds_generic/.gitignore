@@ -1,0 +1,4 @@
+# Background textures are generated (or dropped in) locally, not committed.
+*
+!.gitignore
+!README.md

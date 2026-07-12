@@ -495,3 +495,104 @@ compare_models.py   # reads AlexNet/outputs/eval_results.json, VGG16/outputs/...
 launcher pattern, or modifying `resnet34_model/src/train.py` /
 `evaluate.py` to accept `output_dir` — those don't match the existing
 codebase and aren't needed once each model owns its own folder.
+
+---
+
+## Plan 1 — Background-Randomization Run for EfficientNetB0 (NEW, pending approval)
+
+**Task:** Add ONE new experiment row, `efficientnetb0_on_bgrand` = the existing
+`efficientnetb0_on` Stack-ON solution **plus** background-randomization
+augmentation (per `plan1_background_randomization.md`). Measure whether it
+shrinks the real-world generalization gap.
+
+### Hard constraints (user + the plan)
+1. **Do NOT modify any existing file.** No edits to `experiments/common/*`,
+   the existing `efficientnetb0_*.yaml`, `run.py`, `compare.py`, or the 12
+   ablation runs. Everything new lives in a **new folder**.
+2. **One variable.** New run differs from `efficientnetb0_on` by *exactly one
+   thing*: a background-randomization transform prepended to the **train**
+   pipeline. Same backbone, split, seed (42), budget, head, CBAM, label
+   smoothing, basic + advanced augmentation.
+3. **Train-set only.** Val/test/real-world get resize+normalize, nothing else.
+4. **No real-world images in training.** Backgrounds are generic textures; the
+   runner asserts `background_dir` is disjoint from the real-world test source.
+5. Select on PlantVillage val macro-F1; read real-world once.
+
+### Design: isolation by *importing* the shared code, never editing it
+Reuse via import so the ablation code path stays byte-for-byte identical:
+- `common.data` → `_basic_four`, `_advanced_block`, `IMAGENET_MEAN/STD`,
+  `AlbumentationsImageFolder`, `seed_worker`, `build_eval_transform`.
+- `common.engine` → `_run_epoch` unchanged.
+- `common.backbones` → `build_backbone`. `common.seeding` → `seed_everything`.
+- `common.evaluate` → `evaluate_run` **verbatim** (bgrand is train-only, so
+  eval is identical; it rebuilds the model from the checkpoint's cfg).
+
+### New files (all under `experiments/plan1_bgrand/` unless noted)
+| File | Purpose |
+|---|---|
+| `__init__.py` | package marker |
+| `bg_randomize.py` | `BackgroundRandomize` Albumentations `ImageOnlyTransform`: with prob `p`, segment the leaf, composite onto a random background, optional boundary blur. Loads backgrounds once. `segment_leaf(img)` helper. |
+| `data_bgrand.py` | `build_train_loader_bgrand(...)`: mirrors `common.data.build_loaders` but **prepends** `BackgroundRandomize` to the train transform. Val/test loaders come from `common.data` unchanged. Same return-tuple shape. |
+| `engine_bgrand.py` | `train_run_bgrand(cfg, results_dir, device)`: two-stage loop reusing `_run_epoch`/`build_backbone`/`seed_everything`; identical checkpointing + metrics.json. Only difference vs `engine.train_run`: train loader from `data_bgrand`. Saves same cfg/class_to_idx so `evaluate_run` works unchanged. |
+| `run_bgrand.py` | Entry point. Loads config, resolves paths, **asserts** `background_dir` exists and is disjoint from `real_world_dir`, trains, then calls `common.evaluate.evaluate_run`. `--eval-only` supported. |
+| `compare_bgrand.py` | Reads `efficientnetb0_on` vs `efficientnetb0_on_bgrand` eval JSONs; prints delta table (Acc, MacroF1, RW_Acc, RW_F1, Gap) + per-class real-world F1. Does **not** touch `compare.py`. |
+| `sanity_check_masks.py` | Saves original/mask/composite grids for ~N images/class to eyeball segmentation **before** the full run (plan §5.2). |
+| `make_synthetic_backgrounds.py` | Optional fallback: ~60 domain-neutral procedural textures into `data/backgrounds_generic/` so the pipeline runs before real CC0 textures are curated. |
+| `configs/efficientnetb0_on_bgrand.yaml` | New run config (real runner schema). |
+| `run_bgrand_slurm.sh` | HPC job: mask sanity-check → train+eval → `compare_bgrand`. Partition `gpu-24c-l4-4g`, gres `gpu:l4:1`. |
+| `README.md` | Curate backgrounds, sanity-check, run, read result. |
+
+**New data dir:** `data/backgrounds_generic/` (git-ignored images).
+
+### Config (ADAPTED to the actual runner schema, not the plan's illustrative one)
+```yaml
+run_name: efficientnetb0_on_bgrand
+seed: 42
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/processed/real_environment_test
+stack:                         # IDENTICAL to efficientnetb0_on.yaml
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+background_randomization:      # the ONE new block
+  enabled: true
+  prob: 0.5                    # p; tune on VAL only
+  background_dir: data/backgrounds_generic
+  segmentation: hsv_threshold  # hsv_threshold | pretrained (rembg, optional)
+  boundary_blur: true
+training:                      # IDENTICAL budget
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32
+```
+
+### Segmentation (refinement of plan §3.3 Route A)
+Segment **foreground-vs-uniform-background** (estimate background color from
+image corners → mask pixels far from it → morphological close/open → largest
+connected component) rather than a pure green threshold, so brown/yellow
+**lesions** (the diseased pixels the label depends on) are preserved. `cv2`
+(already pulled in by albumentations) provides HSV/morphology/connected
+components/boundary blur. `pretrained` (rembg) is an optional fallback.
+
+### Steps (after approval)
+1. Create the `experiments/plan1_bgrand/` package + files above.
+2. Create `data/backgrounds_generic/` + synthetic generator; gitignore bulk images.
+3. You run (I ask yes/no each time): synthetic bgs (or your own) →
+   `sanity_check_masks.py` → `run_bgrand_slurm.sh` on HPC → `compare_bgrand.py`.
+4. Completion walkthrough.
+
+### Will NOT do
+- Edit `compare.py`/master table (bgrand compared via `compare_bgrand.py`).
+- Tune `p` on real-world data; put real-world images in `background_dir`;
+  retrain or alter any existing run.
+
+### Open question before I build
+**Backgrounds:** OK to generate ~60 synthetic domain-neutral textures so the
+pipeline runs immediately (swap in real CC0 textures later)? Or point
+`background_dir` at a texture folder you already have?
