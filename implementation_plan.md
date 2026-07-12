@@ -596,3 +596,25 @@ components/boundary blur. `pretrained` (rembg) is an optional fallback.
 **Backgrounds:** OK to generate ~60 synthetic domain-neutral textures so the
 pipeline runs immediately (swap in real CC0 textures later)? Or point
 `background_dir` at a texture folder you already have?
+> Resolved: synthetic first (user, 2026-07-12); swap in CC0 later.
+
+### Fair re-run v2 (2026-07-12) — after the first run hurt slightly
+First run (classical `hsv_threshold` masks, `prob=0.5`) gave real-world
+macro-F1 **−0.0193** vs `efficientnetb0_on` and widened the gap. Mask sanity
+grids showed the loss was driven by artifacts, not a clean test: (1) a **halo**
+of original backdrop bleeding through the soft mask edge (a train-only cue);
+(2) **edge erosion / holes** dropping marginal lesions — the worst-hit classes
+(bacterial spot −0.056, septoria −0.074, leaf mold) are exactly the
+edge-lesion diseases; (3) the dataset's backdrops are **already textured**, so
+the corner-colour+Otsu uniform-background assumption degrades AND the
+"clean-background shortcut" the method targets is weaker than assumed.
+
+User chose a single fair re-run (not tuning-to-win — fixing a clear artifact):
+- **Segmentation → rembg (U^2-Net)** (`segmentation: pretrained`), robust on
+  textured backdrops; `hsv_threshold` kept as fallback.
+- **Erode mask inward** (`mask_erode_px: 3`) so the soft edge sits inside the
+  leaf and no original backdrop leaks in → kills the halo.
+- Same `prob=0.5`, seed, split, budget; select on val, read real-world once.
+- New dep isolated in `experiments/plan1_bgrand/requirements.txt` (rembg,
+  onnxruntime); install + model pre-download on the HPC **login node**.
+If v2 still doesn't help, report a confident bounded negative.

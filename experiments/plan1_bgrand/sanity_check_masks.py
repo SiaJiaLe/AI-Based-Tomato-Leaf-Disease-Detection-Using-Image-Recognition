@@ -16,7 +16,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .bg_randomize import _load_backgrounds, composite, segment_leaf
+from .bg_randomize import (_load_backgrounds, composite, make_rembg_session,
+                           segment_leaf, segment_leaf_rembg)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_TRAIN = os.path.join(REPO_ROOT, "data", "processed", "train")
@@ -35,11 +36,16 @@ def main():
     parser.add_argument("--train-dir", default=DEFAULT_TRAIN)
     parser.add_argument("--background-dir", default=DEFAULT_BG)
     parser.add_argument("--per-class", type=int, default=3)
+    parser.add_argument("--segmentation", default="pretrained",
+                        choices=["pretrained", "hsv_threshold"],
+                        help="Match the config so the preview reflects the real pipeline.")
+    parser.add_argument("--erode-px", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     rng = np.random.default_rng(args.seed)
     backgrounds = _load_backgrounds(args.background_dir)
+    session = make_rembg_session() if args.segmentation == "pretrained" else None
     os.makedirs(OUT_DIR, exist_ok=True)
 
     classes = sorted(d for d in os.listdir(args.train_dir)
@@ -59,9 +65,12 @@ def main():
             img = _read_rgb(os.path.join(cls_dir, files[i]))
             if img is None:
                 continue
-            mask = segment_leaf(img)
+            if args.segmentation == "pretrained":
+                mask = segment_leaf_rembg(img, session)
+            else:
+                mask = segment_leaf(img)
             bg = backgrounds[rng.integers(len(backgrounds))]
-            comp = composite(img, mask, bg, boundary_blur=True)
+            comp = composite(img, mask, bg, boundary_blur=True, erode_px=args.erode_px)
             fg = float((mask > 0).mean())
             for ax, im, title in zip(
                     axes[row],

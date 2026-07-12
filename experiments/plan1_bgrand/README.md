@@ -20,8 +20,13 @@ augmentation-free eval transform as every other run.
   segmented and composited onto a random background; with probability `1-prob`
   the original PlantVillage image passes through untouched. So the model learns
   **both** originals and composites — no image copying needed.
-- Segmentation keys on foreground-vs-uniform-background (not a green threshold),
-  so brown/yellow lesions stay inside the mask.
+- Segmentation keys on the leaf (not on green), so brown/yellow lesions stay
+  inside the mask. Default route is **rembg (U^2-Net)** — robust on the
+  textured/shadowed backdrops this dataset actually has; `hsv_threshold` is the
+  no-download classical fallback.
+- The mask is **eroded inward** (`mask_erode_px`) before compositing so no
+  original backdrop leaks through as a halo (the artifact that hurt the first
+  classical run).
 
 ## Files
 | File | Purpose |
@@ -39,9 +44,14 @@ augmentation-free eval transform as every other run.
 ## Run it (HPC)
 ```bash
 git pull
-# one GPU batch job does everything:
+# ONE-TIME, ON THE LOGIN NODE (needs internet) — installs rembg + downloads U^2-Net:
+pip install -r experiments/plan1_bgrand/requirements.txt
+python -c "from rembg import new_session; new_session('u2net')"
+# then one GPU batch job does everything:
 sbatch experiments/plan1_bgrand/run_bgrand_slurm.sh
 ```
+No internet on the compute nodes? Do the two login-node steps above first, or
+set `segmentation: hsv_threshold` in the config to skip rembg entirely.
 
 ## Run it (manual / debugging)
 ```bash

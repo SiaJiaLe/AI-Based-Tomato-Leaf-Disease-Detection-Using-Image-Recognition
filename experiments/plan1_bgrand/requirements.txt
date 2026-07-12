@@ -1,0 +1,9 @@
+# Extra dependency for Plan 1 when segmentation: pretrained (rembg / U^2-Net).
+# Install ON THE LOGIN NODE (needs internet) into the tomato-ml env, on top of
+# experiments/requirements.txt:
+#     pip install -r experiments/plan1_bgrand/requirements.txt
+# Then pre-download the model once (also needs internet):
+#     python -c "from rembg import new_session; new_session('u2net')"
+# Not needed if you set segmentation: hsv_threshold in the config.
+rembg
+onnxruntime
