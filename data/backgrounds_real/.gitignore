@@ -1,0 +1,4 @@
+# Real CC0 background photos are dropped in locally, not committed.
+*
+!.gitignore
+!README.md

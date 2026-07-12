@@ -6,9 +6,11 @@ controlled and real-world test sets, plus the per-class real-world F1 table.
 The delta is attributable to background randomization alone.
 
     python -m experiments.plan1_bgrand.compare_bgrand
+    python -m experiments.plan1_bgrand.compare_bgrand --bgrand efficientnetb0_on_bgrand_real
 
 Does NOT touch experiments/compare.py or the master ablation table.
 """
+import argparse
 import json
 import os
 
@@ -37,15 +39,22 @@ def _row(label, base, bg, key):
 
 
 def main():
-    base_c, bg_c = _load(BASELINE, False), _load(BGRAND, False)
-    base_r, bg_r = _load(BASELINE, True), _load(BGRAND, True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--baseline", default=BASELINE, help="Baseline run name.")
+    parser.add_argument("--bgrand", default=BGRAND,
+                        help="bgrand run to compare (e.g. efficientnetb0_on_bgrand_real).")
+    args = parser.parse_args()
+    baseline, bgrand = args.baseline, args.bgrand
+
+    base_c, bg_c = _load(baseline, False), _load(bgrand, False)
+    base_r, bg_r = _load(baseline, True), _load(bgrand, True)
 
     if bg_c is None:
-        raise SystemExit(f"No results for {BGRAND}. Run the training first.")
+        raise SystemExit(f"No results for {bgrand}. Run the training first.")
     if base_c is None:
-        print(f"WARNING: baseline {BASELINE} results not found — showing bgrand only.\n")
+        print(f"WARNING: baseline {baseline} results not found — showing bgrand only.\n")
 
-    print(f"\n=== Plan 1: {BGRAND}  vs  {BASELINE} ===\n")
+    print(f"\n=== Plan 1: {bgrand}  vs  {baseline} ===\n")
     print(f"  {'metric':24} {'baseline':>10} {'bgrand':>10} {'delta':>10}")
     print("  " + "-" * 56)
     print(_row("controlled_accuracy", base_c, bg_c, "accuracy"))
@@ -72,9 +81,9 @@ def main():
                 print(f"  {c:45} {b:>10.4f} {g:>10.4f} {g-b:>+10.4f}")
 
     # Persist a small machine-readable summary next to the run.
-    out = os.path.join(RESULTS_DIR, BGRAND, "compare_vs_baseline.json")
+    out = os.path.join(RESULTS_DIR, bgrand, "compare_vs_baseline.json")
     summary = {
-        "baseline": BASELINE, "bgrand": BGRAND,
+        "baseline": baseline, "bgrand": bgrand,
         "controlled": {"baseline": base_c, "bgrand": bg_c},
         "real_world": {"baseline": base_r, "bgrand": bg_r},
     }
