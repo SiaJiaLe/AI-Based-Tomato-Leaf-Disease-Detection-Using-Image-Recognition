@@ -182,8 +182,13 @@ class BackgroundRandomize(A.ImageOnlyTransform):
             if cached is not None and cached.shape == img.shape[:2]:
                 return cached
         mask = self._segment(img)
-        tmp = f"{path}.tmp{os.getpid()}"  # atomic write so parallel workers never read a partial file
-        if cv2.imwrite(tmp, mask):
+        # Encode to PNG in memory (imwrite would key format off the temp file's
+        # extension), then atomic-rename so parallel workers never read a partial.
+        ok, buf = cv2.imencode(".png", mask)
+        if ok:
+            tmp = f"{path}.tmp{os.getpid()}"
+            with open(tmp, "wb") as fh:
+                fh.write(buf.tobytes())
             os.replace(tmp, path)
         return mask
 
