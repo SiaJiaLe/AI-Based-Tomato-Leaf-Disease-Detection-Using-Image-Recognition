@@ -21,7 +21,7 @@ from .bg_randomize import (_load_backgrounds, composite, make_rembg_session,
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_TRAIN = os.path.join(REPO_ROOT, "data", "processed", "train")
-DEFAULT_BG = os.path.join(REPO_ROOT, "data", "backgrounds_generic")
+DEFAULT_BG = os.path.join(REPO_ROOT, "data", "backgrounds_generic_synthetic")
 OUT_DIR = os.path.join(REPO_ROOT, "experiments", "results", "plan1_bgrand", "mask_sanity")
 _EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp")
 

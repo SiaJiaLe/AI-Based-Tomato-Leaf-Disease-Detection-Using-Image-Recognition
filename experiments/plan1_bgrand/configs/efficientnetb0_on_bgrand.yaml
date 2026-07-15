@@ -17,7 +17,7 @@ stack:                              # unchanged from efficientnetb0_on
 background_randomization:           # the ONE new variable (train-set only)
   enabled: true
   prob: 0.5                         # fraction of train images randomized; tune on VAL only
-  background_dir: data/backgrounds_generic   # generic textures, NOT PlantVillage, NOT real-world
+  background_dir: data/backgrounds_generic_synthetic   # synthetic textures, NOT PlantVillage, NOT real-world
   segmentation: pretrained          # rembg / U^2-Net — robust on textured backdrops (was hsv_threshold)
   mask_erode_px: 3                  # shrink mask inward to remove the original-background halo
   mask_cache_dir: data/mask_cache   # cache each image's mask so U^2-Net runs once per image, not per epoch

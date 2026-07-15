@@ -37,7 +37,7 @@ augmentation-free eval transform as every other run.
 | `run_bgrand.py` | Entry point; asserts backgrounds exist and are disjoint from real-world; then `common.evaluate.evaluate_run`. |
 | `compare_bgrand.py` | `efficientnetb0_on` vs `efficientnetb0_on_bgrand` delta + per-class real-world F1. |
 | `sanity_check_masks.py` | Saves original/mask/composite grids to inspect segmentation first. |
-| `make_synthetic_backgrounds.py` | Generates ~60 domain-neutral textures into `data/backgrounds_generic/`. |
+| `make_synthetic_backgrounds.py` | Generates ~60 domain-neutral textures into `data/backgrounds_generic_synthetic/`. |
 | `configs/efficientnetb0_on_bgrand.yaml` | The run config. |
 | `run_bgrand_slurm.sh` | HPC job: backgrounds → sanity grids → train+eval → compare. |
 
@@ -76,4 +76,4 @@ val macro-F1, then read real-world once. Never tune on real-world.
 
 ## Backgrounds
 Synthetic by default. Swap in real CC0 textures later by dropping image files
-into `data/backgrounds_generic/` — see that folder's README.
+into `data/backgrounds_generic_synthetic/` — see that folder's README.

@@ -27,7 +27,7 @@ python -c "from rembg import new_session; new_session('u2net')" 2>/dev/null || \
   echo "WARN: could not pre-download u2net — run the pre-download on the login node."
 
 # 1. Generate synthetic backgrounds if the folder is empty (idempotent).
-if [ -z "$(ls -A data/backgrounds_generic 2>/dev/null | grep -Ei '\.(jpg|jpeg|png|bmp|tif|tiff|webp)$' || true)" ]; then
+if [ -z "$(ls -A data/backgrounds_generic_synthetic 2>/dev/null | grep -Ei '\.(jpg|jpeg|png|bmp|tif|tiff|webp)$' || true)" ]; then
   echo "No backgrounds found — generating synthetic textures..."
   python -m experiments.plan1_bgrand.make_synthetic_backgrounds
 fi

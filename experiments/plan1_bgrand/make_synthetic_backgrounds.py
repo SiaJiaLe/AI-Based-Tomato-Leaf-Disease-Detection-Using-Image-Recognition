@@ -1,7 +1,7 @@
 """Generate generic, domain-neutral background textures for Plan 1.
 
 Writes ~60 procedural textures (soil, foliage, grass, wood, sky, gravel) into
-data/backgrounds_generic/. These are the backdrops composited behind segmented
+data/backgrounds_generic_synthetic/. These are the backdrops composited behind segmented
 leaves during training. They are deliberately generic and are NOT PlantVillage
 images and NOT the real-world test images — so the model learns background
 *invariance* without leaking the test domain.
@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEFAULT_DIR = os.path.join(REPO_ROOT, "data", "backgrounds_generic")
+DEFAULT_DIR = os.path.join(REPO_ROOT, "data", "backgrounds_generic_synthetic")
 
 # (name, base RGB colour, colour jitter) — coarse natural-scene palettes.
 PALETTES = [

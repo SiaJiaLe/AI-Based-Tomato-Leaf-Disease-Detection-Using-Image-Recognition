@@ -1,6 +1,6 @@
 # Plan 1 — EfficientNetB0 Stack-ON + background randomization, REAL CC0 backdrops.
 # Identical to efficientnetb0_on_bgrand.yaml except background_dir points at real
-# photos (data/backgrounds_real) and a distinct run_name so the synthetic-backdrop
+# photos (data/backgrounds_generic_real) and a distinct run_name so the synthetic-backdrop
 # result (efficientnetb0_on_bgrand) is preserved for the synthetic-vs-real comparison.
 run_name: efficientnetb0_on_bgrand_real
 seed: 42
@@ -16,7 +16,7 @@ stack:                              # unchanged from efficientnetb0_on
 background_randomization:
   enabled: true
   prob: 0.5
-  background_dir: data/backgrounds_real     # REAL CC0 field/texture photos (NOT PlantVillage, NOT real-world test)
+  background_dir: data/backgrounds_generic_real   # REAL CC0 field/texture photos (NOT PlantVillage, NOT real-world test)
   segmentation: pretrained
   mask_erode_px: 3
   mask_cache_dir: data/mask_cache           # SAME cache as the synthetic run — masks are keyed by leaf image, so reused
