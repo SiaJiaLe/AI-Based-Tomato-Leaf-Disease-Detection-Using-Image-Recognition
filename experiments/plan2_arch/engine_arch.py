@@ -17,11 +17,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from experiments.common.data import build_loaders
 from experiments.common.engine import _run_epoch
 from experiments.common.seeding import seed_everything
 
 from .backbones_droppath import assert_eval_compatible, build_arch_backbone
+from .data_res import build_loaders_res
 
 
 def train_run_arch(cfg: dict, results_dir: str, device: torch.device) -> dict:
@@ -32,9 +32,14 @@ def train_run_arch(cfg: dict, results_dir: str, device: torch.device) -> dict:
 
     seed_everything(cfg["seed"])
 
-    train_loader, val_loader, _, class_to_idx = build_loaders(
+    # Tier 2's one variable. Defaults to the baseline's 224, and at 224
+    # build_loaders_res is identical to common.build_loaders (224/0.875 == 256),
+    # so Tier 1 rows reproduce bit-for-bit through this path.
+    image_size = int(mod.get("input_resolution", 224))
+
+    train_loader, val_loader, _, class_to_idx = build_loaders_res(
         data_dir=cfg["data_dir"],
-        image_size=224,
+        image_size=image_size,
         batch_size=tr["batch_size"],
         advanced_augmentation=stack["advanced_augmentation"],
         seed=cfg["seed"],
@@ -42,12 +47,20 @@ def train_run_arch(cfg: dict, results_dir: str, device: torch.device) -> dict:
     num_classes = len(class_to_idx)
 
     # Fail in seconds, not after an hour, if drop-path broke eval compatibility.
-    assert_eval_compatible(num_classes, stack["strong_head"], stack["cbam"],
-                           float(mod["drop_path_rate"]))
+    if "drop_path_rate" in mod:
+        assert_eval_compatible(num_classes, stack["strong_head"], stack["cbam"],
+                               float(mod["drop_path_rate"]))
 
     built = build_arch_backbone(cfg, num_classes)
     built.module.to(device)
     built.warm_up(device)  # materialize lazy CBAM params before optimizer
+    if image_size != 224:
+        # warm_up probes at 224; prove the real resolution forwards too, before
+        # the optimizer is built and an hour of GPU time is spent.
+        built.module.eval()
+        with torch.no_grad():
+            out = built.module(torch.zeros(2, 3, image_size, image_size, device=device))
+        print(f"Forward OK at {image_size}px -> logits {tuple(out.shape)}.", flush=True)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=stack["label_smoothing"])
     history = []

@@ -1,0 +1,28 @@
+# Plan 2 Tier 2 — EfficientNetB0 at 240px input (baseline is 224).
+# Standalone row: the efficientnetb0_on baseline plus the resolution bump and
+# nothing else. No drop-path (Tier 1), no background randomization (Plan 1).
+#
+# The eval Resize target scales with the resolution (274 -> CenterCrop 240) to
+# hold the baseline's 224/256 = 0.875 crop ratio, so this row isolates "more
+# pixels for the same field of view" rather than also widening the framing.
+# See experiments/plan2_arch/data_res.py.
+run_name: efficientnetb0_on_res240
+seed: 42
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/processed/real_environment_test
+stack:                       # IDENTICAL to experiments/configs/efficientnetb0_on.yaml
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+architecture_mod:            # the ONE variable this row tests
+  input_resolution: 240
+training:                    # IDENTICAL budget
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32

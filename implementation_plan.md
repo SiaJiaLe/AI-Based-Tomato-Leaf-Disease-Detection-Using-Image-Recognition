@@ -712,3 +712,77 @@ same yardstick as every other row.
 ### Open question before I build
 Sweep {0.2, 0.3} selected on val (2 trainings, ~1h each, real-world read once
 for the winner) — or a single row at 0.2 (1 training, simplest)?
+
+---
+
+## Plan 2 — Tier 2: Input resolution 224 -> 240 (EfficientNetB0)
+
+Per `plan2_efficientnetb0_architecture.md` §2 Tier 2. **Standalone row**, like
+Tier 1: baseline `efficientnetb0_on` + this one change. Does NOT include Tier 1
+(drop-path) or Plan 1 (bgrand).
+
+### Tier 1 outcome that motivates the design here
+Tier 1 was a bounded negative: real-world macro-F1 **-0.0307**, gap **+0.0293**,
+and it lost on val too (0.9878 vs 0.9882) so val-based selection never favored
+it. Kept in the table as a reported negative row (plan2 §5). Baseline for Tier 2
+therefore remains `efficientnetb0_on`.
+
+### The ONE variable
+`architecture_mod.input_resolution: 240` (from 224). Everything else identical.
+
+### Two code facts that force new files (both verified)
+1. `common/evaluate.py:95,110` **hardcodes 224** in `build_loaders(...)` and
+   `build_eval_transform(224)`. Reusing `evaluate_run` verbatim (as Tier 1 does)
+   would train at 240 and evaluate at 224 — the exact silent preprocessing-parity
+   failure CLAUDE.md warns about. Tier 2 needs a resolution-aware eval path.
+2. `common/data.py:92` `build_eval_transform` hardcodes `Resize(256,256)` then
+   `CenterCrop(image_size)`. Passing 240 would give a 240/256 = 0.9375 crop vs
+   the baseline's 224/256 = 0.875 — i.e. a wider **field of view** on top of the
+   resolution change. That is TWO variables.
+
+**Decision: preserve the 0.875 crop ratio.** Resize to `round(240/0.875)` = 274,
+then CenterCrop(240). FOV is then 240/274 = 0.876, matching the baseline's 0.875.
+The row isolates "more pixels for the same field of view" — which is precisely
+the mechanism plan2 Tier 2 claims (more spatial detail for lesion texture), not
+"sees more of the image".
+
+Train side needs no such care: `_basic_four` uses
+`RandomResizedCrop(size=(image_size, image_size), scale=(0.8,1.0))`, which draws
+the same FOV distribution and only changes output resolution.
+
+### New files (isolation contract unchanged — modify NO existing file)
+| File | Purpose |
+|---|---|
+| `experiments/plan2_arch/data_res.py` | `build_loaders_res(data_dir, image_size, resize_to, ...)` — reuses `_basic_four`, `_advanced_block`, `AlbumentationsImageFolder`, `IMAGENET_*`, `_assert_no_augmentation`, `seed_worker` from `common.data`; only the eval Resize target is new |
+| `experiments/plan2_arch/evaluate_res.py` | `evaluate_run_res(results_dir, device)` — reuses `_load_model`, `_predict`, `_metrics`, `_plot_confusion` from `common.evaluate` verbatim; builds BOTH test loaders and the real-world loader at the run's own resolution |
+| `experiments/plan2_arch/configs/efficientnetb0_on_res240.yaml` | the row |
+
+### Modified (my own Plan 2 files only, not baseline code)
+- `engine_arch.py` — read `image_size` from `architecture_mod.input_resolution`
+  (default 224); use `build_loaders_res`; warm up at the run's resolution.
+- `backbones_droppath.py` — Tier 2 sets no drop-path, so build via common
+  `build_backbone` (EfficientNet is fully-convolutional + global-pool, so no
+  architectural change is needed for a resolution bump; the plan's "adapt the
+  first layers" caveat does not apply to this backbone).
+- `run_arch.py` — `_assert_one_variable` accepts exactly ONE key from
+  {`drop_path_rate`, `input_resolution`}; dispatch to `evaluate_run_res` when
+  `input_resolution != 224`, else the shared `evaluate_run`.
+- `run_res240_slurm.sh` — new job script.
+
+### Hygiene
+- Single row at 240 (plan2: "Keep the increment small"; rows: `..._res240`).
+  No sweep -> no val-selection step needed; real-world read once, at the end.
+- Same seed/split/budget/stack. Judged on real-world macro-F1 + gap.
+- Val/test/real-world stay augmentation-free; `_assert_no_augmentation` is
+  reused so a leak still fails loudly.
+
+### Cost
+240^2/224^2 = 1.15x compute per image; batch 32 fits an L4 comfortably.
+Expect ~1h, same shape as Tier 1.
+
+### Will NOT do
+- Combine with Tier 1 / bgrand; change the crop ratio; sweep 260 in this row;
+  modify `common/`, `run.py`, `compare.py`, or any existing run.
+
+### Open question before I build
+Resolution 240 only (plan's named row), or also 260 as a second row later?

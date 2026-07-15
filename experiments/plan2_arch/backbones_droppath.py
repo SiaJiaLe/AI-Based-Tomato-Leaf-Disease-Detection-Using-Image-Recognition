@@ -63,16 +63,31 @@ def assert_eval_compatible(num_classes: int, strong_head: bool, cbam: bool,
 
 
 def build_arch_backbone(cfg: dict, num_classes: int) -> BuiltModel:
-    """Dispatch on cfg['architecture_mod']. Tier 1 only, for now."""
+    """Dispatch on cfg['architecture_mod'].
+
+    Tier 1 (`drop_path_rate`) needs the drop-path builder. Tier 2
+    (`input_resolution`) does NOT touch the architecture at all — EfficientNetB0
+    is fully convolutional and ends in a global pool, so it accepts any input
+    size and the head's feature dim (1280) is unchanged. The plan's "adapt the
+    first layers' expected input" caveat does not apply to this backbone, so
+    Tier 2 builds the plain baseline model via common.build_backbone.
+    """
+    from experiments.common.backbones import build_backbone
+
     stack = cfg["stack"]
     mod = cfg.get("architecture_mod", {})
     if cfg["backbone"] != "efficientnetb0":
         raise ValueError("Plan 2 rows are EfficientNetB0-only.")
-    if "drop_path_rate" not in mod:
-        raise ValueError("architecture_mod.drop_path_rate is required for the Tier 1 row.")
-    return build_efficientnetb0_droppath(
-        num_classes=num_classes,
-        strong_head=stack["strong_head"],
-        cbam=stack["cbam"],
-        drop_path_rate=float(mod["drop_path_rate"]),
-    )
+
+    if "drop_path_rate" in mod:
+        return build_efficientnetb0_droppath(
+            num_classes=num_classes,
+            strong_head=stack["strong_head"],
+            cbam=stack["cbam"],
+            drop_path_rate=float(mod["drop_path_rate"]),
+        )
+    if "input_resolution" in mod:
+        return build_backbone("efficientnetb0", num_classes,
+                              stack["strong_head"], stack["cbam"])
+    raise ValueError(
+        "architecture_mod must set drop_path_rate (Tier 1) or input_resolution (Tier 2).")

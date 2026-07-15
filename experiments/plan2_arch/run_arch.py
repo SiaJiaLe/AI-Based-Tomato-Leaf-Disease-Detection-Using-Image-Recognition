@@ -27,6 +27,7 @@ import yaml
 from experiments.common.evaluate import evaluate_run
 
 from .engine_arch import train_run_arch
+from .evaluate_res import evaluate_run_res
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RESULTS_DIR = os.path.join(REPO_ROOT, "experiments", "results")
@@ -56,10 +57,16 @@ def _assert_one_variable(cfg: dict) -> None:
             f"  expected: {baseline_stack}\n  got:      {cfg['stack']}\n"
             "Tier rows must change only architecture_mod.")
     mod = cfg.get("architecture_mod", {})
-    if set(mod) != {"drop_path_rate"}:
+    known = {"drop_path_rate", "input_resolution"}  # Tier 1, Tier 2
+    unknown = set(mod) - known
+    if unknown:
+        raise ValueError(f"Unknown architecture_mod key(s): {sorted(unknown)}. Known: {sorted(known)}.")
+    if len(mod) != 1:
         raise ValueError(
-            f"Tier 1 must set exactly one architecture_mod key (drop_path_rate); got {sorted(mod)}.")
-    print(f"One-variable check OK: baseline stack + drop_path_rate={mod['drop_path_rate']}.", flush=True)
+            f"A tier row must set EXACTLY ONE architecture_mod key; got {sorted(mod)}. "
+            "Tiers are standalone — to test a combination, make it an explicit separate row.")
+    (key, value), = mod.items()
+    print(f"One-variable check OK: baseline stack + {key}={value}.", flush=True)
 
 
 def main():
@@ -84,7 +91,14 @@ def main():
         _assert_one_variable(cfg)
         train_run_arch(cfg, results_dir, device)
     if not args.train_only:
-        evaluate_run(results_dir, device)
+        # Resolution rows MUST evaluate at their training resolution —
+        # common.evaluate hardcodes 224, so reusing it for a 240 model would be
+        # a silent train/eval preprocessing mismatch.
+        resolution = int(cfg.get("architecture_mod", {}).get("input_resolution", 224))
+        if resolution != 224:
+            evaluate_run_res(results_dir, device)
+        else:
+            evaluate_run(results_dir, device)
     else:
         print("Trained only — test sets untouched. Select on val, then re-run with --eval-only.",
               flush=True)
