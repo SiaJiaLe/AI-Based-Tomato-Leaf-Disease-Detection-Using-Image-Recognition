@@ -30,6 +30,22 @@ def _load(run_name, real_world):
         return json.load(f)
 
 
+def _tier_of(run_name):
+    """Label the row by the modification it actually tests, read from the run's
+    own resolved config — not hardcoded (this printed 'Tier 1' for the Tier 2
+    row until it was fixed)."""
+    path = os.path.join(RESULTS_DIR, run_name, "resolved_config.json")
+    if not os.path.isfile(path):
+        return "Plan 2", "run"
+    with open(path) as f:
+        mod = json.load(f).get("architecture_mod", {})
+    if "drop_path_rate" in mod:
+        return f"Plan 2 Tier 1 (drop_path_rate={mod['drop_path_rate']})", "tier1"
+    if "input_resolution" in mod:
+        return f"Plan 2 Tier 2 (input_resolution={mod['input_resolution']})", "tier2"
+    return "Plan 2", "run"
+
+
 def _row(label, base, run, key):
     b = base.get(key) if base else None
     g = run.get(key) if run else None
@@ -53,8 +69,9 @@ def main():
     if base_c is None:
         print(f"WARNING: baseline {baseline} results not found — showing {run} only.\n")
 
-    print(f"\n=== Plan 2 Tier 1: {run}  vs  {baseline} ===\n")
-    print(f"  {'metric':24} {'baseline':>10} {'tier1':>10} {'delta':>10}")
+    tier_title, col = _tier_of(run)
+    print(f"\n=== {tier_title}: {run}  vs  {baseline} ===\n")
+    print(f"  {'metric':24} {'baseline':>10} {col:>10} {'delta':>10}")
     print("  " + "-" * 56)
     print(_row("controlled_accuracy", base_c, run_c, "accuracy"))
     print(_row("controlled_macro_f1", base_c, run_c, "macro_f1"))
@@ -65,7 +82,7 @@ def main():
 
     if run_r is not None:
         print("\n  Per-class REAL-WORLD F1:")
-        print(f"  {'class':45} {'baseline':>10} {'tier1':>10} {'delta':>10}")
+        print(f"  {'class':45} {'baseline':>10} {col:>10} {'delta':>10}")
         print("  " + "-" * 77)
         classes = [c for c in run_r["classification_report"]
                    if c not in ("accuracy", "macro avg", "weighted avg")]
