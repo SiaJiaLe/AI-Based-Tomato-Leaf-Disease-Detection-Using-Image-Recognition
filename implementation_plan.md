@@ -618,3 +618,97 @@ User chose a single fair re-run (not tuning-to-win — fixing a clear artifact):
 - New dep isolated in `experiments/plan1_bgrand/requirements.txt` (rembg,
   onnxruntime); install + model pre-download on the HPC **login node**.
 If v2 still doesn't help, report a confident bounded negative.
+
+---
+
+## Plan 2 — Tier 1: Stochastic Depth (drop-path) for EfficientNetB0
+
+Per `plan2_efficientnetb0_architecture.md` §2 Tier 1. **Standalone row.** Not
+built on Plan 1's bgrand (that was a bounded negative), and not combined with
+Tier 2/3. Each tier is baseline + its own one thing.
+
+### Baseline (fixed, untouched)
+`efficientnetb0_on` — the Stack-ON row. Same split (`data/processed`), seed 42,
+same budget (15 A / 25 B, patience 7, lr 1e-3 / 1e-4, bs 32).
+
+### The ONE variable
+`drop_path_rate` on the timm EfficientNet-B0 backbone. Nothing else changes.
+
+**Finding that constrains this row:** the plan's Tier 1 also says "add
+Dropout(0.3-0.5) in the head" — but `common/heads.py:strong_head` ALREADY has
+Dropout(0.4) + Dropout(0.3), and the baseline uses it (`strong_head: true`).
+Head dropout is therefore already in the baseline; adding more would be a
+SECOND variable and would break attribution. Tier 1 = drop-path only. This is
+worth one sentence in the report.
+
+### Isolation (same contract as Plan 1)
+New package `experiments/plan2_arch/`. Modifies NO existing file. Imports from
+`experiments/common/*` only. Does not touch `run.py`, `compare.py`, the 12
+ablation configs/results, or `plan1_bgrand/`.
+
+| New file | Purpose |
+|---|---|
+| `experiments/plan2_arch/__init__.py` | package marker |
+| `experiments/plan2_arch/backbones_droppath.py` | `build_efficientnetb0_droppath(...)` — same as `common/backbones._build_efficientnetb0` but passes `drop_path_rate` to `timm.create_model`; reuses `build_head`, `Sequential_CBAM`, `BuiltModel` |
+| `experiments/plan2_arch/engine_arch.py` | `train_run_arch(cfg, results_dir, device)` — clone of `common.engine.train_run` with the one builder swap; reuses `_run_epoch`, `build_loaders`, `seed_everything`; identical checkpoint layout |
+| `experiments/plan2_arch/run_arch.py` | entrypoint; `--config`, `--train-only`, `--eval-only` |
+| `experiments/plan2_arch/select_on_val.py` | prints `best_val_macro_f1` per candidate; picks the val winner (NO real-world read) |
+| `experiments/plan2_arch/compare_arch.py` | `--baseline efficientnetb0_on --run <row>`; controlled/real-world/gap deltas + per-class real-world F1 |
+| `experiments/plan2_arch/configs/efficientnetb0_on_droppath02.yaml` | `drop_path_rate: 0.2` |
+| `experiments/plan2_arch/configs/efficientnetb0_on_droppath03.yaml` | `drop_path_rate: 0.3` |
+| `experiments/plan2_arch/run_droppath_slurm.sh` | HPC job |
+| `experiments/plan2_arch/README.md` | what/why/how |
+
+### Config (real runner schema, not the plan's illustrative keys)
+```yaml
+run_name: efficientnetb0_on_droppath02
+seed: 42
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/processed/real_environment_test
+stack:                          # IDENTICAL to efficientnetb0_on
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+architecture_mod:               # the ONE new thing
+  drop_path_rate: 0.2
+training:                       # IDENTICAL budget
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32
+```
+
+### Why `evaluate_run` is reused VERBATIM
+Drop-path is parameter-free and is identity in `eval()` mode, so the state_dict
+keys/shapes are unchanged and the checkpoint loads into the plain builder with
+no mismatch. No eval code is duplicated → the row is measured by exactly the
+same yardstick as every other row.
+
+### Hygiene
+- Select the rate on **PlantVillage val macro-F1** (`select_on_val.py`).
+- **Real-world read ONCE**, for the val winner only. Sweep members are trained
+  with `--train-only`, so real-world is never touched during selection.
+- Baseline row untouched; Tier 1 is an additional row.
+- Judged on real-world macro-F1 + gap, not lab accuracy.
+
+### Steps (after approval)
+1. Create the `experiments/plan2_arch/` package + files above.
+2. You run on HPC (I ask yes/no each time): train 0.2 and 0.3 `--train-only`
+   -> `select_on_val.py` -> `run_arch.py --eval-only` on the winner ->
+   `compare_arch.py`.
+3. Completion walkthrough.
+
+### Will NOT do
+- Combine drop-path with bgrand / Tier 2 / Tier 3.
+- Add head dropout (already in baseline; would be a second variable).
+- Touch real-world data to choose the rate.
+- Modify any existing file or run.
+
+### Open question before I build
+Sweep {0.2, 0.3} selected on val (2 trainings, ~1h each, real-world read once
+for the winner) — or a single row at 0.2 (1 training, simplest)?

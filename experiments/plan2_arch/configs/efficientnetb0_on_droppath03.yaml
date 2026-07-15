@@ -1,0 +1,24 @@
+# Plan 2 Tier 1 — EfficientNetB0 + stochastic depth (drop-path), rate 0.3.
+# Sweep sibling of efficientnetb0_on_droppath02; differs ONLY in drop_path_rate.
+# The winner is chosen on PlantVillage VAL macro-F1 (select_on_val.py); the
+# real-world test set is read once, for the winner only.
+run_name: efficientnetb0_on_droppath03
+seed: 42
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/processed/real_environment_test
+stack:                       # IDENTICAL to experiments/configs/efficientnetb0_on.yaml
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+architecture_mod:
+  drop_path_rate: 0.3
+training:
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32
