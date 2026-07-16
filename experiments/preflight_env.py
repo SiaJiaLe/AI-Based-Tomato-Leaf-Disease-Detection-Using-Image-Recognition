@@ -68,7 +68,13 @@ def main():
         # A drifted-but-importable version is a warning, not an error: it may be
         # deliberate. It is still worth printing, because it makes results
         # non-comparable to the rows already in the thesis.
-        if pin and got != pin:
+        #
+        # Compare only the public version: torch reports "2.3.0+cu121", where
+        # "+cu121" is a PEP 440 local version identifier naming the CUDA build,
+        # not a different release. Matching the raw string made this warn on a
+        # perfectly correct env every single run — and a warning that always
+        # fires is a warning nobody reads.
+        if pin and got.split("+")[0] != pin:
             print(f"WARN  {name} {got} != pinned {pin} - results may not be "
                   f"comparable to existing rows.", file=sys.stderr)
 
