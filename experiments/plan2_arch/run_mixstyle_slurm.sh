@@ -39,6 +39,43 @@ L12=efficientnetb0_on_mixstyle_l12
 L123=efficientnetb0_on_mixstyle_l123
 
 # ---------------------------------------------------------------------------
+# PREFLIGHT — fail in seconds, not after queueing for a GPU and importing mid-run
+# ---------------------------------------------------------------------------
+# A previous job died here: the env's torch was half-installed, so the job burned
+# its GPU allocation to reach `import torch.nn` and crash. Check the imports
+# first, cheaply, and say plainly what is wrong.
+echo "=== [0/5] Preflight: environment ==="
+python - << 'PYEOF' || { echo "Preflight FAILED — fix the env on the LOGIN node before resubmitting." >&2; exit 1; }
+import sys
+try:
+    import torch, torchvision, timm, albumentations, numpy
+except Exception as e:
+    print(f"FAIL: {type(e).__name__}: {e}", file=sys.stderr)
+    print("The tomato-ml env is broken. Likely an unpinned pip install moved a "
+          "dependency (torch<->numpy, or albumentations<->albucore).", file=sys.stderr)
+    raise SystemExit(1)
+print(f"torch {torch.__version__} | torchvision {torchvision.__version__} | "
+      f"timm {timm.__version__} | albumentations {albumentations.__version__} | "
+      f"numpy {numpy.__version__}")
+if not torch.cuda.is_available():
+    print("FAIL: CUDA not available — this job needs a GPU.", file=sys.stderr)
+    raise SystemExit(1)
+print(f"CUDA OK: {torch.cuda.get_device_name(0)}")
+PYEOF
+
+# rembg is needed ONLY by Part 2 (the combination row), which must use
+# segmentation: pretrained to match the efficientnetb0_on_bgrand row. Decide now
+# so Part 1 is never wasted, but do NOT install anything — see Part 2's note.
+if python -c "import rembg" 2>/dev/null; then
+  HAVE_REMBG=1
+  echo "rembg OK — the combination row can run."
+else
+  HAVE_REMBG=0
+  echo "WARN: rembg not importable. Part 1 (MixStyle alone) will still run;"
+  echo "      Part 2 (the combination row) will be SKIPPED with instructions."
+fi
+
+# ---------------------------------------------------------------------------
 # PART 1 — MixStyle alone
 # ---------------------------------------------------------------------------
 echo "=== [1/5] Training ${L12} (--train-only, real-world NOT read) ==="
@@ -60,12 +97,26 @@ python -m experiments.plan2_arch.compare_arch --run "$WINNER"
 # PART 2 — MixStyle + background randomization (combination row)
 # ---------------------------------------------------------------------------
 COMBO="${WINNER}_bgrand"
-echo "=== [5/5] Training + evaluating the COMBINATION row ${COMBO} ==="
 
-# rembg (U^2-Net) drives bgrand's segmentation. Masks from the earlier Plan 1 run
-# are cached in data/mask_cache, so this is usually a no-op — guarded anyway.
-python -c "import rembg" 2>/dev/null || pip install -r experiments/plan1_bgrand/requirements.txt || \
-  echo "WARN: rembg install failed — run it on the login node, or set segmentation: hsv_threshold."
+# rembg (U^2-Net) drives bgrand's segmentation, and the combination row must use
+# segmentation: pretrained to match the efficientnetb0_on_bgrand row. Decided in
+# the preflight so Part 1's hours are never thrown away by a Part 2 problem.
+# NOTHING is installed here — see this file's header and
+# experiments/plan1_bgrand/requirements.txt for why.
+if [ "$HAVE_REMBG" -eq 0 ]; then
+  echo
+  echo "=== [5/5] SKIPPED — the COMBINATION row needs rembg ==="
+  echo "Part 1 is complete and saved: ${WINNER} is trained, evaluated, and compared."
+  echo "To add the combination row, install rembg ON THE LOGIN NODE:"
+  echo "    pip install -r experiments/plan1_bgrand/requirements.txt"
+  echo "then run ONLY Part 2 (do not resubmit this whole script — that would"
+  echo "retrain Part 1 from scratch and re-read the real-world set):"
+  echo "    python -m experiments.plan2_arch.run_arch --config $CFGDIR/${COMBO}.yaml"
+  echo "    python -m experiments.plan2_arch.compare_arch --run ${COMBO}"
+  exit 0
+fi
+
+echo "=== [5/5] Training + evaluating the COMBINATION row ${COMBO} ==="
 
 # Synthetic backgrounds must be the SAME pool the bgrand-alone row used, or the
 # factorial breaks. Regenerate only if the folder is empty (idempotent).

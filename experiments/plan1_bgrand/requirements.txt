@@ -1,9 +1,28 @@
-# Extra dependency for Plan 1 when segmentation: pretrained (rembg / U^2-Net).
-# Install ON THE LOGIN NODE (needs internet) into the tomato-ml env, on top of
+# Extra dependency for Plan 1 / the Plan 2 combination row when
+# segmentation: pretrained (rembg / U^2-Net).
+#
+# INSTALL ON THE LOGIN NODE ONLY (needs internet), on top of
 # experiments/requirements.txt:
 #     pip install -r experiments/plan1_bgrand/requirements.txt
 # Then pre-download the model once (also needs internet):
 #     python -c "from rembg import new_session; new_session('u2net')"
-# Not needed if you set segmentation: hsv_threshold in the config.
+#
+# NEVER install this from inside a SLURM job. Doing so is what broke the
+# tomato-ml env on 2026-07-16: unpinned, rembg resolved to 2.0.76, which demands
+# numpy>=2.3.0, while torch 2.3.0 requires numpy<2. pip tried to move numpy,
+# collided with torch, and left a half-written torch behind — every subsequent
+# job died on `import torch.nn`. The job scripts now check for the import and
+# fail fast rather than installing anything.
+#
+# The numpy pin below is the ceiling that keeps this env coherent: it forces
+# pip's resolver to pick a rembg old enough to accept numpy 1.x (i.e. one that
+# coexists with torch 2.3.0) instead of dragging numpy forward and shattering
+# torch. If no such rembg exists, pip fails cleanly — which is the correct
+# outcome, and far better than a half-installed env.
+#
+# Not needed at all if you set segmentation: hsv_threshold — but note that
+# changing the segmentation would make the row incomparable to the existing
+# efficientnetb0_on_bgrand result, which used pretrained.
+numpy==1.26.4                # must match experiments/requirements.txt — torch 2.3.0 needs <2
 rembg
 onnxruntime

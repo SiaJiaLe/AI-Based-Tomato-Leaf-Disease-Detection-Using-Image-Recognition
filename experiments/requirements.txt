@@ -1,10 +1,37 @@
 # Dependencies for the CP2 ablation runner (experiments/).
-# Install into the tomato-ml conda env:  pip install -r experiments/requirements.txt
-torch
-torchvision
-timm
-albumentations
+# Install into the tomato-ml conda env, ON THE LOGIN NODE (needs internet):
+#     pip install -r experiments/requirements.txt
+#
+# VERSIONS ARE PINNED ON PURPOSE. Two reasons:
+#
+#  1. Reproducibility. Every result in the thesis was produced by these exact
+#     versions. Unpinned, a re-run next year silently gets different libraries
+#     and possibly different numbers, and the ablation stops being a controlled
+#     comparison.
+#
+#  2. These packages break each other when they drift apart. Both of the
+#     following have already happened in this env (2026-07-16) and cost a GPU
+#     allocation:
+#       * torch 2.3.0 requires numpy<2. Installing anything that demands
+#         numpy>=2 (e.g. a current rembg) makes pip try to move numpy, collide
+#         with torch, and leave a HALF-WRITTEN torch behind. The symptom is
+#         `ModuleNotFoundError: No module named 'torch._prims_common'` plus a
+#         `~orch` directory in site-packages (pip's leftover from the
+#         interrupted operation — safe to delete).
+#       * albumentations pins an EXACT albucore. Upgrading albucore on its own
+#         breaks the import with
+#         `cannot import name 'preserve_channel_dim' from 'albucore.utils'`.
+#
+# So: never `pip install` unpinned packages into this env, and never install
+# from inside a SLURM job — the job scripts check imports and fail fast instead.
+#
+# torch/torchvision come from the CUDA 12.1 index (Sunway HPC L4 GPUs):
+#     pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu121
+torch==2.3.0
+torchvision==0.18.0
+timm==1.0.27
+albumentations==1.4.10       # pins albucore exactly — never upgrade albucore alone
+numpy==1.26.4                # <2 is REQUIRED by torch 2.3.0
 scikit-learn
 matplotlib
-numpy
 pyyaml
