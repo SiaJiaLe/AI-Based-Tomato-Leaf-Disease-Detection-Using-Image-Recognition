@@ -898,3 +898,55 @@ segmentation). If it differed, bgrand's marginal effect would be uncomputable.
 Sequencing: the combo inherits the MixStyle depth that won Part 1's VAL sweep, so
 no selection touches real-world. Real-world is read once per row (twice total,
 two distinct rows).
+
+---
+
+## Results compilation — one table across every row
+
+### Why a script and not a hand-written table
+Exact figures for `efficientnetb0_off`, `..._bgrand` and `..._droppath02` are not
+in this conversation — only deltas. Retyping thesis numbers from memory is how a
+transcription error reaches a viva. Every row already has its numbers saved on
+disk (`experiments/results/<run>/eval_results.json` and
+`eval_results_real_world.json`, written by the one evaluator every row shares).
+The script reads those files and prints. It NEVER computes or invents a metric:
+a missing file renders `n/a`, never a guess.
+
+### File to CREATE
+`experiments/compile_results.py` — additive. Does NOT touch `compare.py`,
+`compare_arch.py`, `compare_bgrand.py`, or any result.
+
+### What it emits
+1. **Main table** — per row, from `eval_results*.json`:
+   - controlled: accuracy, macro precision, macro recall, macro F1, weighted F1
+   - real-world: same five
+   - gap: accuracy, macro F1
+   - delta vs `efficientnetb0_on` on real-world macro F1 and gap
+2. **Per-class real-world F1 matrix** — classes x runs (this is where
+   `Target_Spot` = 0.0000 everywhere becomes visible at a glance).
+3. **Provenance column** read from each row's `resolved_config.json`: standalone
+   tier / combination / sweep member.
+
+### Outputs
+- Markdown to stdout (paste into the report)
+- `experiments/results/all_results.csv` (for Excel / plotting)
+- `experiments/results/all_results.md`
+
+### Row order (the story, not alphabetical)
+efficientnetb0_off -> efficientnetb0_on (baseline) -> bgrand -> droppath02
+(T1) -> res240 (T2) -> mixstyle_l123 (T3) -> mixstyle_l123_bgrand (combo).
+`--all` dumps every row found on disk (incl. the other 5 backbones' OFF/ON).
+
+### Hygiene the table must SHOW, not hide
+Sweep losers (`droppath03`, `mixstyle_l12`) were trained `--train-only` and never
+evaluated, so they have val numbers only. They are listed as `val-only (not
+evaluated)` rather than omitted — that absence is evidence of the read-once
+discipline, and an examiner should see it.
+
+The combination row is labelled NOT-ATTRIBUTABLE, and the table prints the gap
+warning: the combo has the only narrowing gap while having the worst real-world
+macro-F1, because controlled collapsed faster than real-world fell.
+
+### Will NOT do
+Recompute any metric; touch existing comparison scripts or results; reorder or
+re-evaluate anything (the real-world set is not re-read — this reads JSON only).
