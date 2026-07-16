@@ -41,10 +41,29 @@ def default_resize_to(image_size: int) -> int:
     return int(round(image_size / BASELINE_CROP_RATIO))
 
 
-def build_train_transform_res(image_size: int, advanced_augmentation: bool) -> A.Compose:
+def build_train_transform_res(image_size: int, advanced_augmentation: bool,
+                              bg_cfg: dict = None) -> A.Compose:
     """Identical to common.data.build_train_transform — restated only so the
-    resolution flows through explicitly."""
-    ops = _basic_four(image_size)
+    resolution flows through explicitly.
+
+    `bg_cfg` is used ONLY by the explicit combination row (Tier 3 + Plan 1). It
+    prepends Plan 1's BackgroundRandomize, reusing that transform verbatim so the
+    combination row's input pipeline is the same code the bgrand-alone row ran.
+    Train-set only — val/test/real-world never see it.
+    """
+    ops = []
+    if bg_cfg is not None:
+        from experiments.plan1_bgrand.bg_randomize import BackgroundRandomize
+
+        ops.append(BackgroundRandomize(
+            background_dir=bg_cfg["background_dir"],
+            prob=bg_cfg.get("prob", 0.5),
+            boundary_blur=bg_cfg.get("boundary_blur", True),
+            segmentation=bg_cfg.get("segmentation", "hsv_threshold"),
+            erode_px=bg_cfg.get("mask_erode_px", 3),
+            mask_cache_dir=bg_cfg.get("mask_cache_dir"),
+        ))
+    ops += _basic_four(image_size)
     if advanced_augmentation:
         ops += _advanced_block()
     ops += [A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD), ToTensorV2()]
@@ -67,14 +86,20 @@ def build_eval_transform_res(image_size: int, resize_to: int = None) -> A.Compos
 
 
 def build_loaders_res(data_dir: str, image_size: int, batch_size: int,
-                      advanced_augmentation: bool, seed: int, resize_to: int = None):
+                      advanced_augmentation: bool, seed: int, resize_to: int = None,
+                      bg_cfg: dict = None):
     """Same contract as common.data.build_loaders, at an arbitrary resolution.
 
     Returns (train_loader, val_loader, test_loader, class_to_idx) from the same
     frozen on-disk layout at data_dir/{train,val,test}.
+
+    `bg_cfg` (combination row only) prepends background randomization to the
+    TRAIN transform. The eval transform is built independently and is still put
+    through `_assert_no_augmentation`, so a background-randomized val/test can
+    never slip through.
     """
     resize_to = default_resize_to(image_size) if resize_to is None else resize_to
-    train_tf = build_train_transform_res(image_size, advanced_augmentation)
+    train_tf = build_train_transform_res(image_size, advanced_augmentation, bg_cfg)
     eval_tf = build_eval_transform_res(image_size, resize_to)
     _assert_no_augmentation(eval_tf, "val/test")  # same guard as the baseline
 

@@ -37,19 +37,26 @@ def train_run_arch(cfg: dict, results_dir: str, device: torch.device) -> dict:
     # so Tier 1 rows reproduce bit-for-bit through this path.
     image_size = int(mod.get("input_resolution", 224))
 
+    # Present ONLY on the explicit combination row (Tier 3 + Plan 1), which
+    # run_arch.py gates behind `combination: true`. None on every tier row.
+    bg_cfg = cfg.get("background_randomization")
+
     train_loader, val_loader, _, class_to_idx = build_loaders_res(
         data_dir=cfg["data_dir"],
         image_size=image_size,
         batch_size=tr["batch_size"],
         advanced_augmentation=stack["advanced_augmentation"],
         seed=cfg["seed"],
+        bg_cfg=bg_cfg,
     )
     num_classes = len(class_to_idx)
 
-    # Fail in seconds, not after an hour, if drop-path broke eval compatibility.
-    if "drop_path_rate" in mod:
-        assert_eval_compatible(num_classes, stack["strong_head"], stack["cbam"],
-                               float(mod["drop_path_rate"]))
+    # Tier 1 (drop-path) and Tier 3 (MixStyle) are reused-evaluator rows: both
+    # claim to be parameter-free, which is the only reason common.evaluate can
+    # load their checkpoints into the plain builder. Prove it in seconds rather
+    # than discovering it at --eval-only, after an hour of training.
+    if "drop_path_rate" in mod or "mixstyle" in mod:
+        assert_eval_compatible(cfg, num_classes)
 
     built = build_arch_backbone(cfg, num_classes)
     built.module.to(device)
@@ -123,6 +130,7 @@ def train_run_arch(cfg: dict, results_dir: str, device: torch.device) -> dict:
     metrics = {"run_name": cfg["run_name"], "backbone": cfg["backbone"],
                "seed": cfg["seed"], "stack": stack,
                "architecture_mod": mod,
+               "background_randomization": bg_cfg,  # None except on the combo row
                "best_val_macro_f1": best_f1, "best_val_loss": best_loss,
                "class_to_idx": class_to_idx, "history": history}
     with open(os.path.join(results_dir, "metrics.json"), "w") as f:

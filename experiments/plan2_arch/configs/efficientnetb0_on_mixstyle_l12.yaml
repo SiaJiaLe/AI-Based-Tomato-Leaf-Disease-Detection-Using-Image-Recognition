@@ -1,0 +1,30 @@
+# Plan 2 Tier 3 — EfficientNetB0 + MixStyle after the first TWO MBConv stages.
+# Standalone row: the efficientnetb0_on baseline plus MixStyle and nothing else.
+# No drop-path (Tier 1), no resolution bump (Tier 2), no background
+# randomization (Plan 1 — see the *_bgrand combination row for that).
+#
+# MixStyle is parameter-free and identity at eval, so this row is scored by the
+# shared, unmodified common.evaluate — the same ruler as every other row.
+run_name: efficientnetb0_on_mixstyle_l12
+seed: 42
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/processed/real_environment_test
+stack:                       # IDENTICAL to experiments/configs/efficientnetb0_on.yaml
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+architecture_mod:            # the ONE variable this row tests
+  mixstyle:
+    layers: [1, 2]           # 1-based MBConv stages; style lives in early layers
+    p: 0.5                   # paper default: half of batches are mixed
+    alpha: 0.1               # paper default: Beta(0.1, 0.1), U-shaped
+training:                    # IDENTICAL budget
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32

@@ -37,29 +37,36 @@ def build_efficientnetb0_droppath(num_classes: int, strong_head: bool, cbam: boo
     return BuiltModel(module=model, head=model.classifier, groups=groups)
 
 
-def assert_eval_compatible(num_classes: int, strong_head: bool, cbam: bool,
-                           drop_path_rate: float) -> None:
-    """Fail fast if drop-path changed the state_dict.
+def assert_eval_compatible(cfg: dict, num_classes: int) -> None:
+    """Fail fast if this row's modification changed the state_dict.
 
-    `common.evaluate.evaluate_run` rebuilds the model with the PLAIN builder
-    (no drop_path_rate) and loads our checkpoint into it. That is only valid
-    because drop-path is parameter-free. Verify it at startup — otherwise the
-    mismatch would only surface at --eval-only, after an hour of training.
+    `common.evaluate.evaluate_run` rebuilds the model with the PLAIN builder and
+    loads our checkpoint into it. That is only valid when the modification is
+    parameter-free — true for drop-path (Tier 1) and MixStyle (Tier 3), which is
+    exactly why both rows can be scored by the shared, unmodified evaluator
+    instead of a duplicated one. Verify it at startup, otherwise the mismatch
+    would only surface at --eval-only, after an hour of training.
     """
     from experiments.common.backbones import build_backbone
 
-    plain = build_backbone("efficientnetb0", num_classes, strong_head, cbam)
-    dropped = build_efficientnetb0_droppath(num_classes, strong_head, cbam, drop_path_rate)
+    stack = cfg["stack"]
+    mod = cfg.get("architecture_mod", {})
+    (mod_name, mod_value), = mod.items()
+
+    plain = build_backbone("efficientnetb0", num_classes,
+                           stack["strong_head"], stack["cbam"])
+    modified = build_arch_backbone(cfg, num_classes)
     kp = {k: tuple(v.shape) for k, v in plain.module.state_dict().items()}
-    kd = {k: tuple(v.shape) for k, v in dropped.module.state_dict().items()}
-    if kp != kd:
-        only_d = sorted(set(kd) - set(kp))
-        only_p = sorted(set(kp) - set(kd))
+    km = {k: tuple(v.shape) for k, v in modified.module.state_dict().items()}
+    if kp != km:
+        only_m = sorted(set(km) - set(kp))
+        only_p = sorted(set(kp) - set(km))
         raise RuntimeError(
-            "drop_path_rate changed the state_dict, so common.evaluate cannot load this "
-            f"checkpoint.\n  extra in drop-path model: {only_d[:5]}\n  missing: {only_p[:5]}")
-    print(f"Eval-compatibility OK: drop_path_rate={drop_path_rate} leaves all "
-          f"{len(kp)} state_dict entries unchanged (drop-path is parameter-free).", flush=True)
+            f"{mod_name}={mod_value} changed the state_dict, so common.evaluate cannot "
+            f"load this checkpoint.\n  extra in modified model: {only_m[:5]}\n"
+            f"  missing: {only_p[:5]}")
+    print(f"Eval-compatibility OK: {mod_name}={mod_value} leaves all {len(kp)} "
+          f"state_dict entries unchanged (the modification is parameter-free).", flush=True)
 
 
 def build_arch_backbone(cfg: dict, num_classes: int) -> BuiltModel:
@@ -70,7 +77,9 @@ def build_arch_backbone(cfg: dict, num_classes: int) -> BuiltModel:
     is fully convolutional and ends in a global pool, so it accepts any input
     size and the head's feature dim (1280) is unchanged. The plan's "adapt the
     first layers' expected input" caveat does not apply to this backbone, so
-    Tier 2 builds the plain baseline model via common.build_backbone.
+    Tier 2 builds the plain baseline model via common.build_backbone. Tier 3
+    (`mixstyle`) builds the plain baseline too, then attaches parameter-free
+    MixStyle hooks after the named early MBConv stages.
     """
     from experiments.common.backbones import build_backbone
 
@@ -89,5 +98,18 @@ def build_arch_backbone(cfg: dict, num_classes: int) -> BuiltModel:
     if "input_resolution" in mod:
         return build_backbone("efficientnetb0", num_classes,
                               stack["strong_head"], stack["cbam"])
+    if "mixstyle" in mod:
+        from .mixstyle import attach_mixstyle
+
+        ms = mod["mixstyle"]
+        built = build_backbone("efficientnetb0", num_classes,
+                               stack["strong_head"], stack["cbam"])
+        # Handles are kept alive by the model they are attached to; PyTorch holds
+        # the hook in the module's _forward_hooks dict, so dropping the returned
+        # handles here does not detach them.
+        attach_mixstyle(built.module, layers=ms["layers"],
+                        p=float(ms.get("p", 0.5)), alpha=float(ms.get("alpha", 0.1)))
+        return built
     raise ValueError(
-        "architecture_mod must set drop_path_rate (Tier 1) or input_resolution (Tier 2).")
+        "architecture_mod must set drop_path_rate (Tier 1), input_resolution (Tier 2), "
+        "or mixstyle (Tier 3).")

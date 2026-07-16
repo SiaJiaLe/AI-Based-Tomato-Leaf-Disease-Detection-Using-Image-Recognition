@@ -42,13 +42,28 @@ def load_config(path: str) -> dict:
 
 
 def _assert_one_variable(cfg: dict) -> None:
-    """Guard the one-variable rule: this row must be the baseline stack plus
-    drop-path and nothing else. A stray `background_randomization` block would
-    silently bundle Plan 1 into a Plan 2 row and destroy attribution."""
-    if "background_randomization" in cfg:
+    """Guard the one-variable rule: a tier row is the baseline stack plus exactly
+    one architecture_mod and nothing else.
+
+    The single exception is an explicit COMBINATION row, which plan2 §4 step 5
+    allows ("test the combination as an explicit separate row — never assume
+    additivity"). It must opt in with `combination: true`, so bundling Plan 1
+    into a Plan 2 row can never happen silently — only deliberately, with the
+    row named and reported as a combination.
+    """
+    is_combination = cfg.get("combination", False) is True
+
+    if "background_randomization" in cfg and not is_combination:
         raise ValueError(
-            "This config contains a background_randomization block. Plan 2 tiers are "
-            "standalone rows against efficientnetb0_on — they must NOT bundle Plan 1.")
+            "This config contains a background_randomization block but does not set "
+            "`combination: true`. Plan 2 tiers are standalone rows against "
+            "efficientnetb0_on — they must NOT bundle Plan 1 by accident. If you mean "
+            "to test the combination, declare it explicitly.")
+    if is_combination and "background_randomization" not in cfg:
+        raise ValueError(
+            "`combination: true` is set but there is no background_randomization block — "
+            "this row combines nothing. Remove the flag or add the block.")
+
     baseline_stack = {"advanced_augmentation": True, "label_smoothing": 0.1,
                       "strong_head": True, "cbam": True, "stage_b": "two_group"}
     if cfg["stack"] != baseline_stack:
@@ -57,16 +72,25 @@ def _assert_one_variable(cfg: dict) -> None:
             f"  expected: {baseline_stack}\n  got:      {cfg['stack']}\n"
             "Tier rows must change only architecture_mod.")
     mod = cfg.get("architecture_mod", {})
-    known = {"drop_path_rate", "input_resolution"}  # Tier 1, Tier 2
+    known = {"drop_path_rate", "input_resolution", "mixstyle"}  # Tier 1, 2, 3
     unknown = set(mod) - known
     if unknown:
         raise ValueError(f"Unknown architecture_mod key(s): {sorted(unknown)}. Known: {sorted(known)}.")
     if len(mod) != 1:
         raise ValueError(
             f"A tier row must set EXACTLY ONE architecture_mod key; got {sorted(mod)}. "
-            "Tiers are standalone — to test a combination, make it an explicit separate row.")
+            "Tiers are standalone — to test a combination of two tiers, make it an "
+            "explicit separate row.")
     (key, value), = mod.items()
-    print(f"One-variable check OK: baseline stack + {key}={value}.", flush=True)
+
+    if is_combination:
+        bg = cfg["background_randomization"]
+        print(f"COMBINATION row: baseline stack + {key}={value} + background "
+              f"randomization (prob={bg.get('prob')}, dir={bg.get('background_dir')}).\n"
+              f"  This row is NOT attributable to {key} alone. It is interpretable only "
+              f"against BOTH single-factor rows (2x2 factorial).", flush=True)
+    else:
+        print(f"One-variable check OK: baseline stack + {key}={value}.", flush=True)
 
 
 def main():

@@ -786,3 +786,115 @@ Expect ~1h, same shape as Tier 1.
 
 ### Open question before I build
 Resolution 240 only (plan's named row), or also 260 as a second row later?
+
+---
+
+## Plan 2 — Tier 3: MixStyle (domain-generalization objective)
+
+Standalone row against the same fixed baseline `efficientnetb0_on`. Not stacked
+with Tier 1 (drop-path), Tier 2 (240px), or Plan 1 (bgrand).
+
+### What MixStyle is
+Zhou et al. 2021. Inside the network, a feature map's channel-wise mean/std ARE
+its "style". MixStyle normalizes each sample by its own stats, then re-applies
+stats linearly interpolated with a *shuffled* sample's stats
+(`lambda ~ Beta(0.1, 0.1)`). The model therefore never sees a fixed style paired
+with a label, so it cannot use style as a shortcut for the class. Parameter-free,
+train-mode only, identity at eval.
+
+This is the only tier that targets the lab->field *style* shift directly. Tiers 1
+and 2 changed capacity and detail; both failed. That is the reason to run this.
+
+### Honest prediction, stated before the run
+Single-source MixStyle can only mix styles that exist *within PlantVillage*, and
+PlantVillage's style variance is small (uniform lighting, uniform background).
+The synthesized styles are interpolations inside lab style — they may not reach
+field style. So this may well be a third bounded negative. Recording the
+prediction now is the point: if it fails, that is evidence for the "the gap is
+not model-side" conclusion, not a surprise fitted after the fact.
+
+### Key design decision: forward hooks, not module wrapping
+Wrapping blocks (`nn.Sequential(block, mixstyle)`, as `Sequential_CBAM` does)
+would renumber `state_dict` keys (`blocks.1.x` -> `blocks.1.0.x`), forcing a
+duplicate eval path like Tier 2 needed. Registering a `forward_hook` instead
+leaves the `state_dict` **byte-identical to the baseline's**, so:
+- the shared, unchanged `common.evaluate.evaluate_run` measures this row —
+  same ruler as every other row, no duplicated eval;
+- `assert_eval_compatible` (already written for Tier 1) verifies this at startup
+  rather than trusting it.
+MixStyle is parameter-free, so nothing is lost by keeping it out of the module tree.
+
+### Insertion point
+After the first two MBConv stages: `model.blocks[0]`, `model.blocks[1]` (plan2
+§2: "after the first 1-2 MBConv stages"; the paper applies it in early layers,
+where style lives — late layers carry semantics and mixing there hurts).
+
+### Files to CREATE (all under experiments/plan2_arch/ — isolation preserved)
+- `mixstyle.py` — the `MixStyle` module (random-shuffle mode, since we have a
+  single source domain and no domain labels) + `attach_mixstyle(model, layers, p, alpha)`
+  returning the hook handles.
+- `configs/efficientnetb0_on_mixstyle_l12.yaml`  — `mixstyle: {layers: [1,2], p: 0.5, alpha: 0.1}`
+- `configs/efficientnetb0_on_mixstyle_l123.yaml` — `mixstyle: {layers: [1,2,3], p: 0.5, alpha: 0.1}`
+- `run_mixstyle_slurm.sh` — train both `--train-only` -> `select_on_val` ->
+  `--eval-only` the winner -> `compare_arch`. Same shape as the Tier 1 sweep.
+
+### Files to MODIFY (all inside plan2_arch/; nothing in common/ or the 12 configs)
+- `backbones_droppath.py` — `build_arch_backbone` dispatches `mixstyle` to the
+  plain `build_backbone` (no architectural change) and attaches hooks;
+  `assert_eval_compatible` generalized to check the mixstyle case too.
+- `engine_arch.py` — attach hooks after build; MixStyle stays active in Stage A
+  and Stage B (the paper applies it throughout training).
+- `run_arch.py` — add `mixstyle` to the `known` architecture_mod keys.
+- `select_on_val.py` — label rows by whichever mod key is present, not just
+  `drop_path_rate` (same class of bug I just fixed in `compare_arch.py`).
+- `compare_arch.py` — `_tier_of` learns Tier 3.
+- `README.md` — Tier 3 section.
+
+### Hygiene (unchanged)
+Seed 42, same split, same budget, same stack. Sweep members trained with
+`--train-only`; the winner is chosen on PlantVillage **val** macro-F1 via
+`select_on_val.py` (which can only read `metrics.json`); the real-world set is
+read **once**, for the winner only. `_assert_one_variable` still enforces exactly
+one `architecture_mod` key.
+
+### Cost
+No extra parameters and negligible FLOPs; ~same ~1h/member as Tier 1. Two members
+=> one ~2-3h job.
+
+### Will NOT do
+- Bundle with Tier 1/2/bgrand; tune `p`/`alpha` on real-world; insert MixStyle in
+  late blocks; modify `common/`, `run.py`, `compare.py`, or any existing run.
+
+### Addendum — combination row (Tier 3 + Plan 1), requested after approval
+
+A second part was added to the same job: MixStyle + background randomization.
+Permitted by plan2 §4 step 5 ("test the combination as an explicit separate row
+— never assume additivity"), and it completes a 2x2 factorial:
+
+| row | mixstyle | bgrand |
+|---|---|---|
+| `efficientnetb0_on` | - | - |
+| `efficientnetb0_on_bgrand` | - | yes |
+| `..._mixstyle_l12` (or `_l123`) | yes | - |
+| `..._mixstyle_l12_bgrand` | yes | yes |
+
+All four cells present => the combo is still attributable at the margin: combo vs
+mixstyle-alone isolates what bgrand adds in MixStyle's presence, and vice versa.
+The combo row on its own is NOT attributable to either factor; `compare_arch.py`
+stamps `[COMBINATION — not attributable to either factor alone]` on its title.
+
+Why these two compose plausibly: bgrand perturbs style in INPUT space (swaps real
+pixels), MixStyle perturbs it in FEATURE space (mixes internal statistics). Same
+target gap, different levels.
+
+Guard change: `background_randomization` in a Plan 2 config is now allowed ONLY
+behind an explicit `combination: true` opt-in, so bundling can never happen by
+accident. 8 unit tests cover the guard.
+
+Factorial integrity: the combo's `background_randomization` block is byte-identical
+to the `efficientnetb0_on_bgrand` row's (synthetic pool, prob 0.5, pretrained
+segmentation). If it differed, bgrand's marginal effect would be uncomputable.
+
+Sequencing: the combo inherits the MixStyle depth that won Part 1's VAL sweep, so
+no selection touches real-world. Real-world is read once per row (twice total,
+two distinct rows).

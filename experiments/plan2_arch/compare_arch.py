@@ -38,12 +38,24 @@ def _tier_of(run_name):
     if not os.path.isfile(path):
         return "Plan 2", "run"
     with open(path) as f:
-        mod = json.load(f).get("architecture_mod", {})
+        cfg = json.load(f)
+    mod = cfg.get("architecture_mod", {})
+
     if "drop_path_rate" in mod:
-        return f"Plan 2 Tier 1 (drop_path_rate={mod['drop_path_rate']})", "tier1"
-    if "input_resolution" in mod:
-        return f"Plan 2 Tier 2 (input_resolution={mod['input_resolution']})", "tier2"
-    return "Plan 2", "run"
+        title, col = f"Plan 2 Tier 1 (drop_path_rate={mod['drop_path_rate']})", "tier1"
+    elif "input_resolution" in mod:
+        title, col = f"Plan 2 Tier 2 (input_resolution={mod['input_resolution']})", "tier2"
+    elif "mixstyle" in mod:
+        title, col = f"Plan 2 Tier 3 (mixstyle layers={mod['mixstyle']['layers']})", "tier3"
+    else:
+        return "Plan 2", "run"
+
+    # A combination row is not attributable to its tier alone; say so in the
+    # title so the number is never quoted as that tier's effect.
+    if cfg.get("combination") is True and "background_randomization" in cfg:
+        title += " + Plan 1 bgrand  [COMBINATION — not attributable to either factor alone]"
+        col = "combo"
+    return title, col
 
 
 def _row(label, base, run, key):
