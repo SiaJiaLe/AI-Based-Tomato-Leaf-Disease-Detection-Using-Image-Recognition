@@ -18,19 +18,24 @@
 #         `ModuleNotFoundError: No module named 'torch._prims_common'` plus a
 #         `~orch` directory in site-packages (pip's leftover from the
 #         interrupted operation — safe to delete).
-#       * albumentations pins an EXACT albucore. Upgrading albucore on its own
-#         breaks the import with
+#       * albumentations 1.4.10 declares only `albucore>=0.0.11` — a LOWER
+#         BOUND, not a pin. So any re-resolve is free to pull a much newer
+#         albucore, which has since moved `preserve_channel_dim` out of
+#         `albucore.utils`; the import then dies with
 #         `cannot import name 'preserve_channel_dim' from 'albucore.utils'`.
+#         albucore must therefore be pinned HERE — albumentations will not do it.
 #
 # So: never `pip install` unpinned packages into this env, and never install
 # from inside a SLURM job — the job scripts check imports and fail fast instead.
+# `python -m experiments.preflight_env` verifies all of this in about a second.
 #
 # torch/torchvision come from the CUDA 12.1 index (Sunway HPC L4 GPUs):
 #     pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu121
 torch==2.3.0
 torchvision==0.18.0
 timm==1.0.27
-albumentations==1.4.10       # pins albucore exactly — never upgrade albucore alone
+albumentations==1.4.10
+albucore==0.0.11             # NOT implied by albumentations (it allows >=0.0.11) — pin it
 numpy==1.26.4                # <2 is REQUIRED by torch 2.3.0
 scikit-learn
 matplotlib

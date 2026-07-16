@@ -42,26 +42,9 @@ L123=efficientnetb0_on_mixstyle_l123
 # PREFLIGHT — fail in seconds, not after queueing for a GPU and importing mid-run
 # ---------------------------------------------------------------------------
 # A previous job died here: the env's torch was half-installed, so the job burned
-# its GPU allocation to reach `import torch.nn` and crash. Check the imports
-# first, cheaply, and say plainly what is wrong.
+# its GPU allocation to reach `import torch.nn` and crash. Check first — 1 second.
 echo "=== [0/5] Preflight: environment ==="
-python - << 'PYEOF' || { echo "Preflight FAILED — fix the env on the LOGIN node before resubmitting." >&2; exit 1; }
-import sys
-try:
-    import torch, torchvision, timm, albumentations, numpy
-except Exception as e:
-    print(f"FAIL: {type(e).__name__}: {e}", file=sys.stderr)
-    print("The tomato-ml env is broken. Likely an unpinned pip install moved a "
-          "dependency (torch<->numpy, or albumentations<->albucore).", file=sys.stderr)
-    raise SystemExit(1)
-print(f"torch {torch.__version__} | torchvision {torchvision.__version__} | "
-      f"timm {timm.__version__} | albumentations {albumentations.__version__} | "
-      f"numpy {numpy.__version__}")
-if not torch.cuda.is_available():
-    print("FAIL: CUDA not available — this job needs a GPU.", file=sys.stderr)
-    raise SystemExit(1)
-print(f"CUDA OK: {torch.cuda.get_device_name(0)}")
-PYEOF
+python -m experiments.preflight_env
 
 # rembg is needed ONLY by Part 2 (the combination row), which must use
 # segmentation: pretrained to match the efficientnetb0_on_bgrand row. Decide now

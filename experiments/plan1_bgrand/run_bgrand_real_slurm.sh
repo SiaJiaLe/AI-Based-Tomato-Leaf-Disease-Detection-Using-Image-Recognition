@@ -22,6 +22,19 @@ conda activate tomato-ml
 
 CFG=experiments/plan1_bgrand/configs/efficientnetb0_on_bgrand_real.yaml
 
+# Preflight the env before spending the GPU allocation. This script never
+# installs anything — see run_bgrand_slurm.sh's note and
+# experiments/plan1_bgrand/requirements.txt for why that rule exists.
+echo "Preflight: environment..."
+python -m experiments.preflight_env
+
+if ! python -c "import rembg" 2>/dev/null; then
+  echo "ERROR: rembg is not importable, but this config uses segmentation: pretrained." >&2
+  echo "       Install it ON THE LOGIN NODE:" >&2
+  echo "           pip install -r experiments/plan1_bgrand/requirements.txt" >&2
+  exit 1
+fi
+
 # Fail early with a clear message if the real-background folder is empty.
 if [ -z "$(ls -A data/backgrounds_generic_real 2>/dev/null | grep -Ei '\.(jpg|jpeg|png|bmp|tif|tiff|webp)$' || true)" ]; then
   echo "ERROR: data/backgrounds_generic_real has no images. Drop 30-100 real CC0 photos there first."
