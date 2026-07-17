@@ -32,13 +32,15 @@ real_data_1
 postgresql-18.4-2-windows-x64.exe
 full_system_technical_implementation_plan.md
 full_system_feature_roadmap.md
-real_dataset_3
-real_dataset_4
-real_dataset_5
+# Raw dataset drops. Globbed, not numbered one by one: real_dataset_6..9 and
+# real_dataset_target_spot were sitting untracked on the HPC because the list
+# stopped at 5, and a stray `git add -A` would have committed them.
+real_data_*
+real_dataset_*
+kaggle_plant_village_dataset
 
-# Real-world test set: track the 10 empty class folders so `git pull` creates the
-# structure on the HPC, but never the images. Without this, a stray `git add -A`
-# on the HPC would commit an entire image dataset into the repo.
-data/real_environment_dataset/**
-!data/real_environment_dataset/**/
-!data/real_environment_dataset/**/.gitkeep
+# Datasets are never committed; they live on the HPC and are far too large.
+# This does NOT stop `git pull` creating data/real_environment_dataset/'s 10 class
+# folders: their .gitkeep files are already TRACKED, and .gitignore has no effect
+# on tracked files. It does mean the images you download into them stay ignored.
+data/*
