@@ -168,10 +168,21 @@ def _norm(counts):
     return np.divide(cm, sums, out=np.zeros_like(cm), where=sums != 0)
 
 
-def _draw(ax, data, title, fontsize=6):
+def _draw(ax, data, title, fontsize=6, mode="norm"):
+    """Draw one matrix. mode='norm' shows row-normalized fractions (each row sums
+    to 1, so classes of different sizes are comparable); mode='counts' shows raw
+    integer counts (the exact numbers, colour-scaled to this matrix's own max)."""
     names = [_clean(c) for c in data["class_names"]]
-    cmn = _norm(data["counts"])
-    im = ax.imshow(cmn, cmap="Blues", vmin=0, vmax=1)
+    counts = np.array(data["counts"])
+    if mode == "counts":
+        grid = counts.astype(float)
+        vmax = grid.max() or 1.0
+        thresh = 0.5 * vmax
+    else:
+        grid = _norm(data["counts"])
+        vmax = 1.0
+        thresh = 0.5
+    im = ax.imshow(grid, cmap="Blues", vmin=0, vmax=vmax)
     ax.set_xticks(range(len(names)))
     ax.set_yticks(range(len(names)))
     ax.set_xticklabels(names, rotation=90, fontsize=fontsize)
@@ -181,24 +192,36 @@ def _draw(ax, data, title, fontsize=6):
     ax.set_title(title, fontsize=fontsize + 2)
     for i in range(len(names)):
         for j in range(len(names)):
-            if cmn[i, j] > 0.005:
-                ax.text(j, i, f"{cmn[i, j]:.2f}", ha="center", va="center", fontsize=fontsize - 1,
-                        color="white" if cmn[i, j] > 0.5 else "black")
+            if mode == "counts":
+                # Show every cell including 0, exactly like the reference figure.
+                txt = str(int(counts[i, j]))
+            elif grid[i, j] > 0.005:
+                txt = f"{grid[i, j]:.2f}"
+            else:
+                continue
+            ax.text(j, i, txt, ha="center", va="center", fontsize=fontsize - 1,
+                    color="white" if grid[i, j] > thresh else "black")
     return im
 
 
 def plot_one(data):
-    fig, ax = plt.subplots(figsize=(10, 8))
-    _draw(ax, data, f"{data['run']} - real-world test (row-normalized)", fontsize=7)
-    fig.tight_layout()
-    path = os.path.join(OUT_DIR, f"{data['run']}.png")
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    return path
+    """Write BOTH views for one run: fractions and raw counts."""
+    paths = []
+    for mode, suffix, label in (("norm", "", "row-normalized"),
+                                ("counts", "_counts", "raw counts")):
+        fig, ax = plt.subplots(figsize=(10, 8))
+        im = _draw(ax, data, f"{data['run']} - real-world test ({label})", fontsize=7, mode=mode)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        fig.tight_layout()
+        path = os.path.join(OUT_DIR, f"{data['run']}{suffix}.png")
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        paths.append(path)
+    return paths
 
 
-def plot_grid(mats, runs, fname, suptitle):
-    """All the EfficientNetB0 rows in one figure - the point is the COMPARISON."""
+def plot_grid(mats, runs, fname, suptitle, mode="norm"):
+    """All the rows in one figure - the point is the COMPARISON."""
     present = [r for r in runs if r in mats]
     if len(present) < 2:
         return None
@@ -207,7 +230,8 @@ def plot_grid(mats, runs, fname, suptitle):
     fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows))
     axes = np.atleast_1d(axes).ravel()
     for ax, run in zip(axes, present):
-        _draw(ax, mats[run], f"{_short(run)}  (RW F1 {mats[run]['macro_f1']:.4f})", fontsize=5)
+        _draw(ax, mats[run], f"{_short(run)}  (RW F1 {mats[run]['macro_f1']:.4f})",
+              fontsize=5, mode=mode)
     for ax in axes[len(present):]:
         ax.axis("off")
     fig.suptitle(suptitle, fontsize=14)
@@ -216,6 +240,51 @@ def plot_grid(mats, runs, fname, suptitle):
     fig.savefig(path, dpi=150)
     plt.close(fig)
     return path
+
+
+# Short predicted-column codes so a full 10x10 count matrix fits a terminal width.
+# Keyed by the exact class name; the legend printed with the tables spells them out.
+_CODES = {
+    "Tomato___Bacterial_spot": "Bact",
+    "Tomato___Early_blight": "Early",
+    "Tomato___Late_blight": "Late",
+    "Tomato___Leaf_Mold": "Mold",
+    "Tomato___Septoria_leaf_spot": "Sept",
+    "Tomato___Spider_mites Two-spotted_spider_mite": "Mite",
+    "Tomato___Target_Spot": "Targ",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus": "TYLCV",
+    "Tomato___Tomato_mosaic_virus": "Mosc",
+    "Tomato___Tomato_mosaic_virus ": "Mosc",
+    "Tomato___healthy": "Hlth",
+}
+
+
+def _code(name):
+    return _CODES.get(name, _clean(name)[:5])
+
+
+def counts_matrix_table(data):
+    """The exact real-world confusion counts for one run as a readable text grid.
+
+    Rows are the TRUE class (with its image total); columns are the PREDICTED class
+    (short codes). The diagonal is correct predictions. This is the same information
+    as the *_counts.png, but legible over SSH with no file to copy."""
+    names = data["class_names"]
+    counts = np.array(data["counts"])
+    codes = [_code(c) for c in names]
+    headers = ["true \\ pred"] + codes + ["tot"]
+    body = []
+    for i, c in enumerate(names):
+        support = int(counts[i].sum())
+        body.append([_code(c)] + [str(int(counts[i, j])) for j in range(len(names))]
+                    + [str(support)])
+    diag = int(np.trace(counts))
+    total = int(counts.sum())
+    note = (f"Exact counts for {data['run']} on the real-world set "
+            f"({total} images, {diag} correct = {100 * diag / total:.1f}% accuracy). "
+            f"Row = true class, column = predicted; the diagonal (true==pred code) is "
+            f"correct. Codes: " + ", ".join(f"{_code(n)}={_clean(n)}" for n in names) + ".")
+    return Table(f"Confusion counts - {_short(data['run'])}", headers, body, note)
 
 
 def top_confusions(data, k=5):
@@ -369,11 +438,17 @@ def main():
     if not args.no_write:
         os.makedirs(OUT_DIR, exist_ok=True)
         for run in mats:
-            plot_one(mats[run])
+            plot_one(mats[run])   # writes <run>.png (fractions) AND <run>_counts.png (raw)
         plot_grid(mats, eb0_story, "grid_efficientnetb0.png",
-                  "EfficientNetB0 real-world confusion: baseline vs every intervention")
+                  "EfficientNetB0 real-world confusion (row-normalized): baseline vs every intervention")
+        plot_grid(mats, eb0_story, "grid_efficientnetb0_counts.png",
+                  "EfficientNetB0 real-world confusion (raw counts): baseline vs every intervention",
+                  mode="counts")
         plot_grid(mats, ablation, "grid_ablation.png",
-                  "Backbone ablation real-world confusion: stack OFF vs ON")
+                  "Backbone ablation real-world confusion (row-normalized): stack OFF vs ON")
+        plot_grid(mats, ablation, "grid_ablation_counts.png",
+                  "Backbone ablation real-world confusion (raw counts): stack OFF vs ON",
+                  mode="counts")
 
     preamble = [
         "Every matrix below was recomputed from the row's own FROZEN checkpoint and verified "
@@ -398,6 +473,21 @@ def main():
     md = render_markdown(tables, preamble)
     print(md if args.markdown else text)
 
+    # The exact per-run count matrices. Baseline first, then the rest of the
+    # EfficientNetB0 story, then the ablation backbones. Written to their own file
+    # (18 full 10x10 grids is a lot to scroll past on stdout), and printed here so
+    # the exact numbers are visible over SSH with no PNG to copy.
+    count_order = eb0_story + [r for r in all_runs if r not in eb0_story]
+    count_tables = [counts_matrix_table(mats[r]) for r in count_order if r in mats]
+    counts_preamble = [
+        "Exact real-world confusion COUNTS for every evaluated row - the same numbers as "
+        "the *_counts.png figures, in text. Row = true class, column = predicted (short "
+        "codes, spelled out under each table); the diagonal is correct predictions; 'tot' "
+        "is the number of real-world images of that true class.",
+    ]
+    counts_text = render_text(count_tables, counts_preamble)
+    print("\n" + counts_text)
+
     if skipped:
         print("Skipped (never evaluated - real-world set deliberately not read for them): "
               + ", ".join(skipped))
@@ -410,9 +500,18 @@ def main():
     md_path = os.path.join(OUT_DIR, "confusion_report.md")
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md + "\n")
-    print(f"\nWrote {txt_path}  (aligned text)")
-    print(f"Wrote {md_path}  (markdown - paste into the report)")
-    print(f"Wrote {len(mats)} matrices + figures to {OUT_DIR}")
+    counts_txt_path = os.path.join(OUT_DIR, "confusion_counts.txt")
+    with open(counts_txt_path, "w", encoding="utf-8") as f:
+        f.write(counts_text + "\n")
+    counts_md_path = os.path.join(OUT_DIR, "confusion_counts.md")
+    with open(counts_md_path, "w", encoding="utf-8") as f:
+        f.write(render_markdown(count_tables, counts_preamble) + "\n")
+    print(f"\nWrote {txt_path}  (analysis: top confusions, error profiles)")
+    print(f"Wrote {md_path}  (same, markdown)")
+    print(f"Wrote {counts_txt_path}  (EXACT count matrices, every row)")
+    print(f"Wrote {counts_md_path}  (same, markdown - paste into the report)")
+    print(f"Wrote per-run PNGs (<run>.png fractions, <run>_counts.png raw) + 4 grid "
+          f"figures to {OUT_DIR}")
 
 
 if __name__ == "__main__":
