@@ -35,3 +35,10 @@ full_system_feature_roadmap.md
 real_dataset_3
 real_dataset_4
 real_dataset_5
+
+# Real-world test set: track the 10 empty class folders so `git pull` creates the
+# structure on the HPC, but never the images. Without this, a stray `git add -A`
+# on the HPC would commit an entire image dataset into the repo.
+data/real_environment_dataset/**
+!data/real_environment_dataset/**/
+!data/real_environment_dataset/**/.gitkeep

@@ -2,7 +2,7 @@ run_name: mobilenetv2_on
 seed: 42
 backbone: mobilenetv2
 data_dir: data/processed
-real_world_dir: data/processed/real_environment_test
+real_world_dir: data/real_environment_dataset
 stack:
   advanced_augmentation: true
   label_smoothing: 0.1

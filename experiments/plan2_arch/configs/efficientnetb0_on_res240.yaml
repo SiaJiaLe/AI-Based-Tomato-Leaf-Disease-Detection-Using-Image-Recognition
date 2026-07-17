@@ -10,7 +10,7 @@ run_name: efficientnetb0_on_res240
 seed: 42
 backbone: efficientnetb0
 data_dir: data/processed
-real_world_dir: data/processed/real_environment_test
+real_world_dir: data/real_environment_dataset
 stack:                       # IDENTICAL to experiments/configs/efficientnetb0_on.yaml
   advanced_augmentation: true
   label_smoothing: 0.1

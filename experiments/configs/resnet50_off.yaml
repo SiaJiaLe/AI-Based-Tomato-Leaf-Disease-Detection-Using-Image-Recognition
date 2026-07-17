@@ -2,7 +2,7 @@ run_name: resnet50_off
 seed: 42
 backbone: resnet50
 data_dir: data/processed
-real_world_dir: data/processed/real_environment_test
+real_world_dir: data/real_environment_dataset
 stack:
   advanced_augmentation: false
   label_smoothing: 0.0

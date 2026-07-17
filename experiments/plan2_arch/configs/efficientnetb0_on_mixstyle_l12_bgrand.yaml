@@ -23,7 +23,7 @@ run_name: efficientnetb0_on_mixstyle_l12_bgrand
 seed: 42
 backbone: efficientnetb0
 data_dir: data/processed
-real_world_dir: data/processed/real_environment_test
+real_world_dir: data/real_environment_dataset
 combination: true            # REQUIRED opt-in; run_arch.py refuses to bundle Plan 1 without it
 stack:                       # still IDENTICAL to the baseline
   advanced_augmentation: true

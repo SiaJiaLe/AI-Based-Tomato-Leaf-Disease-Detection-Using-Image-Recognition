@@ -7,7 +7,7 @@ run_name: efficientnetb0_on_bgrand
 seed: 42
 backbone: efficientnetb0
 data_dir: data/processed
-real_world_dir: data/processed/real_environment_test
+real_world_dir: data/real_environment_dataset
 stack:                              # unchanged from efficientnetb0_on
   advanced_augmentation: true
   label_smoothing: 0.1
