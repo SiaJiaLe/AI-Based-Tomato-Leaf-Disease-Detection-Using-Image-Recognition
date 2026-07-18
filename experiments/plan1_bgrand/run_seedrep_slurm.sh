@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/seedrep_%A_%a.err
 #SBATCH --time=02:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 #SBATCH --array=0-6
 
 # 3-seed replication of the realism result (Plan 6). One array task per config:

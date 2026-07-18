@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/confusion_%j.err
 #SBATCH --time=00:30:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # Recover the real-world confusion matrix of every EVALUATED row as numbers.
 #

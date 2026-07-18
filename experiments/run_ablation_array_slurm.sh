@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/ablation_%A_%a.err
 #SBATCH --time=04:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 #SBATCH --array=0-11
 
 # Trains + evaluates the 12 ablation runs IN PARALLEL, one config per array task

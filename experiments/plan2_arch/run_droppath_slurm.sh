@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/plan2_tier1_%j.err
 #SBATCH --time=06:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # Plan 2 Tier 1 — stochastic depth (drop-path) for EfficientNetB0.
 # Sweeps drop_path_rate in {0.2, 0.3}, selects the winner on PlantVillage VAL

@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/plan1_bgrand_real_%j.err
 #SBATCH --time=04:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # REAL-BACKGROUND variant of Plan 1: same pipeline as run_bgrand_slurm.sh but
 # backgrounds come from data/backgrounds_generic_real (real CC0 photos you dropped in),

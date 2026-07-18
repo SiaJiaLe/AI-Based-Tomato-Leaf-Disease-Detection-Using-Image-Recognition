@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/postprocess_%j.err
 #SBATCH --time=01:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # Runs AFTER all training/eval jobs finish (retrain_all.sh submits this with an
 # afterok dependency). Regenerates the cross-cutting analysis from the freshly

@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/reeval_%j.err
 #SBATCH --time=00:40:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # Re-measure every evaluated row against the NEW real-world set
 # (data/real_environment_dataset), retiring data/processed/real_environment_test.

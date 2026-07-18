@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/plan2_tier2_%j.err
 #SBATCH --time=04:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # Plan 2 Tier 2 — input resolution 224 -> 240 for EfficientNetB0.
 # Single row (the plan names ..._res240 and warns to keep the increment small),

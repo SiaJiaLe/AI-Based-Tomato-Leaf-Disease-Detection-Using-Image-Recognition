@@ -4,7 +4,7 @@
 #SBATCH --error=experiments/results/plan2_tier3_%j.err
 #SBATCH --time=10:00:00
 #SBATCH --gres=gpu:l4:1
-#SBATCH --partition=gpu-24c-l4-4g
+#SBATCH --partition=gpu-8c-l4-1g
 
 # Plan 2 Tier 3 — MixStyle, in two parts, in one job:
 #

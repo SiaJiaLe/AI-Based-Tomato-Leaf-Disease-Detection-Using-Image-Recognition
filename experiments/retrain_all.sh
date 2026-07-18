@@ -24,6 +24,12 @@ REPO="$(pwd)"
 CLEAR_MASKS=0
 [ "${1:-}" = "--clear-mask-cache" ] && CLEAR_MASKS=1
 
+# Classes turned OFF for now (not deleted). They are skipped in the split AND moved out
+# of the real-world eval set so common/evaluate.py does not KeyError on a class the 8-class
+# models were never trained on. To turn them back on: empty this list and move the folders
+# back from data/real_environment_dataset_excluded/ into data/real_environment_dataset/.
+EXCLUDE=("Tomato___Target_Spot" "Tomato___Tomato_mosaic_virus")
+
 eval "$(conda shell.bash hook)"
 conda activate tomato-ml
 
@@ -50,7 +56,21 @@ fi
 echo "Preflight OK."
 
 echo ""; echo "=== [2/5] Re-split data/raw -> data/processed ==="
-python -m experiments.split_dataset
+python -m experiments.split_dataset --exclude "${EXCLUDE[@]}"
+
+# Keep the real-world eval set in lockstep with the training label space: move any
+# excluded class out of data/real_environment_dataset (evaluate.py remaps BY NAME, so an
+# unknown class there is a KeyError). Moved, not deleted; idempotent.
+if [ "${#EXCLUDE[@]}" -gt 0 ]; then
+  mkdir -p data/real_environment_dataset_excluded
+  for cls in "${EXCLUDE[@]}"; do
+    if [ -d "data/real_environment_dataset/$cls" ]; then
+      mv "data/real_environment_dataset/$cls" "data/real_environment_dataset_excluded/$cls"
+      echo "Moved eval class out: $cls -> data/real_environment_dataset_excluded/"
+    fi
+  done
+  echo "Real-world eval set now excludes: ${EXCLUDE[*]} (turn back on by moving them back)."
+fi
 
 echo ""; echo "=== [3/5] Archive old results ==="
 if [ -d experiments/results ] && [ -n "$(ls -A experiments/results 2>/dev/null || true)" ]; then

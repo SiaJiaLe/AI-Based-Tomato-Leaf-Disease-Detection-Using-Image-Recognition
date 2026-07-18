@@ -30,14 +30,27 @@ def _images(d):
                   if os.path.splitext(f)[1].lower() in IMAGE_EXT)
 
 
-def split(raw_dir, processed_dir, seed=42):
-    """Symlink every raw image into processed/{train,val,test}/<class>/. Returns counts."""
+def split(raw_dir, processed_dir, seed=42, exclude=None):
+    """Symlink every raw image into processed/{train,val,test}/<class>/. Returns counts.
+
+    `exclude` is a list of class folder names to OMIT from the split (their raw images
+    are left on disk, just not linked in), so a class can be turned off from training
+    without deleting anything.
+    """
     if not os.path.isdir(raw_dir):
         raise FileNotFoundError(f"raw dir does not exist: {raw_dir}")
-    classes = sorted(d for d in os.listdir(raw_dir)
-                     if os.path.isdir(os.path.join(raw_dir, d)))
+    exclude = set(exclude or [])
+    all_dirs = sorted(d for d in os.listdir(raw_dir)
+                      if os.path.isdir(os.path.join(raw_dir, d)))
+    classes = [d for d in all_dirs if d not in exclude]
+    skipped = [d for d in all_dirs if d in exclude]
+    if skipped:
+        print(f"Excluding {len(skipped)} class(es) from the split (raw images kept, not linked): {skipped}")
+    missing_excl = exclude - set(all_dirs)
+    if missing_excl:
+        print(f"WARNING: --exclude names not found in raw dir (ignored): {sorted(missing_excl)}")
     if not classes:
-        raise FileNotFoundError(f"No class folders in {raw_dir}.")
+        raise FileNotFoundError(f"No class folders to split in {raw_dir} (after exclusions).")
 
     # Clean ONLY the three splits - never touch real_environment_dataset or siblings.
     for sp in SPLITS:
@@ -86,9 +99,11 @@ def main():
     parser.add_argument("--raw", default=os.path.join(REPO_ROOT, "data", "raw"))
     parser.add_argument("--processed", default=os.path.join(REPO_ROOT, "data", "processed"))
     parser.add_argument("--seed", type=int, default=42, help="Shuffle seed (default 42).")
+    parser.add_argument("--exclude", nargs="+", default=[],
+                        help="Class folder name(s) to omit from the split (raw kept, not linked).")
     args = parser.parse_args()
     print(f"Splitting {args.raw}\n      into {args.processed}  (70/15/15, seed {args.seed})")
-    split(args.raw, args.processed, seed=args.seed)
+    split(args.raw, args.processed, seed=args.seed, exclude=args.exclude)
 
 
 if __name__ == "__main__":
