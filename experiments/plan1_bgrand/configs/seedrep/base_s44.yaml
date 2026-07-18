@@ -1,0 +1,28 @@
+# Seed-replication BASELINE, seed 44. See base_s42.yaml for why prob: 0.0 is the
+# correct one-variable baseline (same code path, background randomization off).
+run_name: efficientnetb0_seedrep_base_s44
+seed: 44
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/real_environment_dataset
+stack:                              # unchanged from efficientnetb0_on
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+background_randomization:
+  enabled: false
+  prob: 0.0                         # DISABLED — apply() never runs; no segmentation, no compositing
+  background_dir: data/backgrounds_generic_real   # must exist + be disjoint from real-world; never sampled at prob 0
+  segmentation: pretrained
+  mask_erode_px: 3
+  mask_cache_dir: data/mask_cache
+  boundary_blur: true
+training:                           # unchanged budget
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32

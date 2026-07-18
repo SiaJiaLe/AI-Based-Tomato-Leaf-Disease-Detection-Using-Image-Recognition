@@ -1,0 +1,30 @@
+# Seed-replication SYNTHETIC (bgrand), seed 43. Byte-for-byte identical to
+# experiments/plan1_bgrand/configs/efficientnetb0_on_bgrand.yaml except run_name and
+# seed, so within-recipe the only difference from seed 42 is the seed. Seed 42 is the
+# existing efficientnetb0_on_bgrand run (reused, not retrained).
+run_name: efficientnetb0_seedrep_bgrand_s43
+seed: 43
+backbone: efficientnetb0
+data_dir: data/processed
+real_world_dir: data/real_environment_dataset
+stack:                              # unchanged from efficientnetb0_on
+  advanced_augmentation: true
+  label_smoothing: 0.1
+  strong_head: true
+  cbam: true
+  stage_b: two_group
+background_randomization:           # the ONE new variable (train-set only)
+  enabled: true
+  prob: 0.5
+  background_dir: data/backgrounds_generic_synthetic   # synthetic textures, NOT PlantVillage, NOT real-world
+  segmentation: pretrained
+  mask_erode_px: 3
+  mask_cache_dir: data/mask_cache
+  boundary_blur: true
+training:                           # unchanged budget
+  stage_a_epochs: 15
+  stage_b_epochs: 25
+  patience: 7
+  stage_a_lr: 1.0e-3
+  stage_b_lr: 1.0e-4
+  batch_size: 32
