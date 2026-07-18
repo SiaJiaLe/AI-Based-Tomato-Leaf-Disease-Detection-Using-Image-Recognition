@@ -112,6 +112,26 @@ def cm_path(run):
     return os.path.join(OUT_DIR, f"{run}_cm_real_world.json")
 
 
+def _read_cm_json(path):
+    """Load a counts JSON, tolerating (and repairing) a trailing-bytes double-write.
+
+    A transient double-write on the HPC parallel filesystem can leave a second JSON
+    object appended after the first, which plain json.load rejects with 'Extra data'
+    (seen on vgg16_off, 2026-07-18). The FIRST object is the complete, valid record,
+    so decode just that with raw_decode; if anything trailed it, rewrite the file
+    clean so one stray file can never abort the whole report again.
+    """
+    with open(path) as f:
+        text = f.read()
+    obj, end = json.JSONDecoder().raw_decode(text)
+    if text[end:].strip():
+        with open(path, "w") as f:
+            json.dump(obj, f, indent=2)
+        print(f"  NOTE  repaired trailing data in {os.path.basename(path)} "
+              f"(kept the first, valid record).", flush=True)
+    return obj
+
+
 def compute_cm(run, device, force=False):
     """Return the saved/recomputed confusion matrix for one run, or None to skip."""
     published = _load(run, "eval_results_real_world.json")
@@ -121,8 +141,7 @@ def compute_cm(run, device, force=False):
         return None
 
     if not force and os.path.isfile(cm_path(run)):
-        with open(cm_path(run)) as f:
-            return json.load(f)
+        return _read_cm_json(cm_path(run))
 
     results_dir = os.path.join(RESULTS_DIR, run)
     model, cfg, class_to_idx = _load_model(results_dir, device)
@@ -421,8 +440,7 @@ def main():
             continue
         if args.report_only:
             if os.path.isfile(cm_path(run)):
-                with open(cm_path(run)) as f:
-                    mats[run] = json.load(f)
+                mats[run] = _read_cm_json(cm_path(run))
             continue
         data = compute_cm(run, device, force=args.force)
         if data is None:
