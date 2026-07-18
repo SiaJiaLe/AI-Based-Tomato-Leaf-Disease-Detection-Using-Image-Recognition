@@ -30,12 +30,44 @@ def _images(d):
                   if os.path.splitext(f)[1].lower() in IMAGE_EXT)
 
 
-def split(raw_dir, processed_dir, seed=42, exclude=None):
+def _existing_split_matches(processed_dir, expected):
+    """True only if train/val/test all already hold EXACTLY `expected` class folders
+    and are non-empty. A match means re-splitting would reproduce the same class set,
+    so it is safe to skip. A mismatch (e.g. an old 10-class split when we now expect 8)
+    must NOT be skipped - that is the stale-split trap."""
+    expected = set(expected)
+    for sp in SPLITS:
+        d = os.path.join(processed_dir, sp)
+        if not os.path.isdir(d):
+            return False, f"{sp}/ does not exist"
+        found = set(x for x in os.listdir(d) if os.path.isdir(os.path.join(d, x)))
+        if found != expected:
+            extra = sorted(found - expected)
+            missing = sorted(expected - found)
+            return False, f"{sp}/ class set differs (extra={extra}, missing={missing})"
+    total = sum(len(os.listdir(os.path.join(processed_dir, sp, c)))
+                for sp in SPLITS for c in expected)
+    if total == 0:
+        return False, "split dirs exist but hold no images"
+    return True, ""
+
+
+def _existing_counts(processed_dir, classes):
+    return {c: {sp: len(os.listdir(os.path.join(processed_dir, sp, c))) for sp in SPLITS}
+            for c in classes}
+
+
+def split(raw_dir, processed_dir, seed=42, exclude=None, skip_if_exists=False):
     """Symlink every raw image into processed/{train,val,test}/<class>/. Returns counts.
 
     `exclude` is a list of class folder names to OMIT from the split (their raw images
     are left on disk, just not linked in), so a class can be turned off from training
     without deleting anything.
+
+    `skip_if_exists` returns the existing split WITHOUT rebuilding, but ONLY when
+    train/val/test already hold exactly the expected class set (raw minus exclude) and
+    are non-empty. A mismatch always re-splits, so a stale split for the wrong classes
+    can never be silently reused.
     """
     if not os.path.isdir(raw_dir):
         raise FileNotFoundError(f"raw dir does not exist: {raw_dir}")
@@ -51,6 +83,14 @@ def split(raw_dir, processed_dir, seed=42, exclude=None):
         print(f"WARNING: --exclude names not found in raw dir (ignored): {sorted(missing_excl)}")
     if not classes:
         raise FileNotFoundError(f"No class folders to split in {raw_dir} (after exclusions).")
+
+    if skip_if_exists:
+        ok, reason = _existing_split_matches(processed_dir, classes)
+        if ok:
+            print(f"Existing split in {processed_dir} already has the {len(classes)} expected "
+                  f"class(es); skipping re-split (use no --skip-if-exists to force).")
+            return _existing_counts(processed_dir, classes)
+        print(f"Not skipping - existing split unusable: {reason}. Re-splitting.")
 
     # Clean ONLY the three splits - never touch real_environment_dataset or siblings.
     for sp in SPLITS:
@@ -101,9 +141,13 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Shuffle seed (default 42).")
     parser.add_argument("--exclude", nargs="+", default=[],
                         help="Class folder name(s) to omit from the split (raw kept, not linked).")
+    parser.add_argument("--skip-if-exists", action="store_true",
+                        help="Skip re-splitting IF train/val/test already hold exactly the "
+                             "expected class set (raw minus --exclude); a mismatch re-splits.")
     args = parser.parse_args()
     print(f"Splitting {args.raw}\n      into {args.processed}  (70/15/15, seed {args.seed})")
-    split(args.raw, args.processed, seed=args.seed, exclude=args.exclude)
+    split(args.raw, args.processed, seed=args.seed, exclude=args.exclude,
+          skip_if_exists=args.skip_if_exists)
 
 
 if __name__ == "__main__":

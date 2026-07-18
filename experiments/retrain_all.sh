@@ -56,7 +56,10 @@ fi
 echo "Preflight OK."
 
 echo ""; echo "=== [2/5] Re-split data/raw -> data/processed ==="
-python -m experiments.split_dataset --exclude "${EXCLUDE[@]}"
+# --skip-if-exists reuses the split ONLY when train/val/test already hold exactly the
+# expected class set (raw minus EXCLUDE); a mismatch (e.g. a stale 10-class split) still
+# re-splits. So changing EXCLUDE always forces a correct rebuild.
+python -m experiments.split_dataset --exclude "${EXCLUDE[@]}" --skip-if-exists
 
 # Keep the real-world eval set in lockstep with the training label space: move any
 # excluded class out of data/real_environment_dataset (evaluate.py remaps BY NAME, so an
