@@ -29,6 +29,15 @@
 #
 # Submit from the repo root:
 #     sbatch experiments/run_reeval_slurm.sh
+#
+# Any arguments after the script name are forwarded to the re-evaluation step. Use
+# this to REFRESH the current set after re-processing (cleaning) its images:
+#
+#     sbatch experiments/run_reeval_slurm.sh --refresh
+#
+# --refresh overwrites the new-set results in place, backs up the previous pass per
+# run into archive_<set>_<timestamp>/, and does NOT touch the retired archive. The
+# --check step below never receives these args, so it stays a plain set check.
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}"
@@ -46,7 +55,8 @@ echo "=== [2/3] Checking the new real-world set ==="
 python -m experiments.reevaluate_real_world --check
 
 echo "=== [3/3] Re-evaluating every row on the new set ==="
-python -m experiments.reevaluate_real_world
+# "$@" forwards any sbatch script args (e.g. --refresh) to the re-evaluation step.
+python -m experiments.reevaluate_real_world "$@"
 
 echo
 echo "Done. The real-world column now refers to data/real_environment_dataset."

@@ -3,6 +3,20 @@
     python -m experiments.reevaluate_real_world --check   # counts only, no model, no GPU
     python -m experiments.reevaluate_real_world           # archive + re-evaluate every row
     python -m experiments.reevaluate_real_world --run efficientnetb0_on   # one row
+    python -m experiments.reevaluate_real_world --refresh # re-measure the SAME set in place
+
+REFRESH vs the default
+----------------------
+The default path SWITCHES sets: it archives each row's retired-set originals into
+archive_<old_set>/ and refuses if that archive already exists. Once the study has
+switched, re-running it aborts on the first row (the guard working).
+
+`--refresh` is for the other case: the CURRENT set's images were re-processed (e.g.
+cleaned) and every row must be re-measured on them. It overwrites the new-set
+results in place, backs up the previous pass into archive_<set>_<timestamp>/, and
+does NOT touch the retired archive. It refuses any row whose published
+real_world_set is not already this set, so it can never be used to skip the
+one-time archiving of the retired originals.
 
 WHY A SEPARATE SCRIPT — the naive approach silently does nothing
 ----------------------------------------------------------------
@@ -47,6 +61,7 @@ Controlled (PlantVillage) results are NOT touched. The gap is recomputed from th
 untouched eval_results.json, so only its real-world term moves.
 """
 import argparse
+import datetime
 import json
 import os
 import shutil
@@ -164,7 +179,7 @@ def _archive_dir(results_dir, old_set):
     return os.path.join(results_dir, f"archive_{old_set}")
 
 
-def reevaluate(run, new_dir, device, dry_run=False):
+def reevaluate(run, new_dir, device, dry_run=False, refresh=False, refresh_ts=None):
     published = _load(run, "eval_results_real_world.json")
     if published is None:
         # Never evaluated => the real-world set was never read for this row, and
@@ -176,14 +191,30 @@ def reevaluate(run, new_dir, device, dry_run=False):
     old_dir = cfg["real_world_dir"]
     old_set = os.path.basename(old_dir.rstrip("/\\"))
     archive = _archive_dir(results_dir, old_set)
+    new_set = os.path.basename(_abs(new_dir).rstrip("/\\"))
 
-    # Refuse rather than overwrite an existing archive: the original numbers can be
-    # saved exactly once, and a careless second run must not be able to destroy them.
-    if os.path.isdir(archive) and os.listdir(archive):
-        raise RuntimeError(
-            f"{run}: {archive} already exists and is not empty. The original results "
-            f"have already been archived once; refusing to overwrite them. If you "
-            f"really mean to re-run, move or delete that folder yourself first.")
+    if refresh:
+        # Re-measure the set that is ALREADY published (its images were re-processed).
+        # Refuse any row not already on this set: --refresh must never be the thing
+        # that first switches a row, because switching is what archives the retired
+        # originals, and that archiving must happen through the default path exactly
+        # once. The retired archive is not touched here at all.
+        if published.get("real_world_set") != new_set:
+            raise RuntimeError(
+                f"{run}: --refresh re-measures the set already published, but this "
+                f"row's real_world_set is {published.get('real_world_set')!r}, not "
+                f"{new_set!r}. Run without --refresh first to switch this row (which "
+                f"archives the retired originals). --refresh only re-measures a row "
+                f"that is already on this set.")
+    else:
+        # Refuse rather than overwrite an existing archive: the original numbers can be
+        # saved exactly once, and a careless second run must not be able to destroy them.
+        if os.path.isdir(archive) and os.listdir(archive):
+            raise RuntimeError(
+                f"{run}: {archive} already exists and is not empty. The original results "
+                f"have already been archived once; refusing to overwrite them. If you "
+                f"really mean to re-run, move or delete that folder yourself first. "
+                f"(If you re-processed this set's images, you want --refresh, not this.)")
 
     idx_to_class = {v: k for k, v in class_to_idx.items()}
     class_names = [idx_to_class[i] for i in range(len(idx_to_class))]
@@ -208,30 +239,59 @@ def reevaluate(run, new_dir, device, dry_run=False):
         real_world["generalization_gap_macro_f1"] = controlled["macro_f1"] - real_world["macro_f1"]
     # Provenance: with two real-world sets in existence, a result file that does not
     # name its source is ambiguous forever.
-    real_world["real_world_set"] = os.path.basename(_abs(new_dir).rstrip("/\\"))
+    real_world["real_world_set"] = new_set
     real_world["real_world_dir"] = _abs(new_dir)
     real_world["real_world_n_images"] = int(len(yt))
-    real_world["previous_real_world_set"] = old_set
-    real_world["previous_macro_f1"] = published.get("macro_f1")
+    if refresh:
+        # Keep the RETIRED comparison intact (carry it forward unchanged), and record
+        # what this refresh replaced so the effect of re-processing is recoverable.
+        real_world["previous_real_world_set"] = published.get("previous_real_world_set")
+        real_world["previous_macro_f1"] = published.get("previous_macro_f1")
+        real_world["superseded_macro_f1"] = published.get("macro_f1")
+        real_world["refreshed_at"] = refresh_ts
+    else:
+        real_world["previous_real_world_set"] = old_set
+        real_world["previous_macro_f1"] = published.get("macro_f1")
 
     if dry_run:
-        print(f"  [dry-run] {run}: {published.get('macro_f1'):.4f} ({old_set}) -> "
-              f"{real_world['macro_f1']:.4f} ({real_world['real_world_set']}) "
-              f"— nothing written.", flush=True)
+        if refresh:
+            base = published.get("macro_f1") or 0.0
+            print(f"  [dry-run] {run}: {base:.4f} -> {real_world['macro_f1']:.4f} "
+                  f"({new_set}, refreshed) - nothing written.", flush=True)
+        else:
+            print(f"  [dry-run] {run}: {published.get('macro_f1'):.4f} ({old_set}) -> "
+                  f"{real_world['macro_f1']:.4f} ({new_set}) - nothing written.", flush=True)
         return real_world
 
-    os.makedirs(archive, exist_ok=True)
-    for fname in ("eval_results_real_world.json", "cm_real_world_test.png"):
-        src = os.path.join(results_dir, fname)
-        if os.path.isfile(src):
-            shutil.move(src, os.path.join(archive, fname))
-    with open(os.path.join(archive, "README.txt"), "w") as f:
-        f.write(f"Real-world results for run '{run}' measured on the RETIRED test set\n"
-                f"'{old_set}' ({old_dir}).\n\n"
-                f"Archived when the study switched to '{real_world['real_world_set']}'.\n"
-                f"Kept because these are the numbers the earlier analysis reported, and\n"
-                f"because a finding that reproduces on a second, independent field set is\n"
-                f"far stronger than one measured once. Do not mix the two in one table.\n")
+    if refresh:
+        # Back up the first-pass new-set files before overwriting them, so a refresh
+        # never silently discards a measurement. The retired archive is left alone.
+        backup = _archive_dir(results_dir, f"{new_set}_{refresh_ts}")
+        os.makedirs(backup, exist_ok=True)
+        for src in (os.path.join(results_dir, "eval_results_real_world.json"),
+                    os.path.join(results_dir, "cm_real_world_test.png"),
+                    cm_path(run)):
+            if os.path.isfile(src):
+                shutil.copy2(src, os.path.join(backup, os.path.basename(src)))
+        with open(os.path.join(backup, "README.txt"), "w") as f:
+            f.write(f"Superseded real-world results for run '{run}' on set '{new_set}'.\n\n"
+                    f"Measured on an earlier version of the images and replaced on "
+                    f"{refresh_ts},\nafter the set was re-processed (cleaned). The retired "
+                    f"'{old_set}' originals\nare NOT here - they remain in "
+                    f"archive_{old_set}/. Do not mix passes in one table.\n")
+    else:
+        os.makedirs(archive, exist_ok=True)
+        for fname in ("eval_results_real_world.json", "cm_real_world_test.png"):
+            src = os.path.join(results_dir, fname)
+            if os.path.isfile(src):
+                shutil.move(src, os.path.join(archive, fname))
+        with open(os.path.join(archive, "README.txt"), "w") as f:
+            f.write(f"Real-world results for run '{run}' measured on the RETIRED test set\n"
+                    f"'{old_set}' ({old_dir}).\n\n"
+                    f"Archived when the study switched to '{real_world['real_world_set']}'.\n"
+                    f"Kept because these are the numbers the earlier analysis reported, and\n"
+                    f"because a finding that reproduces on a second, independent field set is\n"
+                    f"far stronger than one measured once. Do not mix the two in one table.\n")
 
     with open(os.path.join(results_dir, "eval_results_real_world.json"), "w") as f:
         json.dump(real_world, f, indent=2)
@@ -250,10 +310,16 @@ def reevaluate(run, new_dir, device, dry_run=False):
                    "real_world_set": real_world["real_world_set"],
                    "n_images": int(len(yt))}, f, indent=2)
 
-    d = real_world["macro_f1"] - (published.get("macro_f1") or 0.0)
-    print(f"  {run}: macro-F1 {published.get('macro_f1'):.4f} ({old_set}) -> "
-          f"{real_world['macro_f1']:.4f} ({real_world['real_world_set']}), {d:+.4f} "
-          f"on {len(yt)} images. Old results archived.", flush=True)
+    base = published.get("macro_f1") or 0.0
+    d = real_world["macro_f1"] - base
+    if refresh:
+        print(f"  {run}: macro-F1 {base:.4f} -> {real_world['macro_f1']:.4f} "
+              f"({new_set}, refreshed), {d:+.4f} on {len(yt)} images. "
+              f"Previous pass backed up.", flush=True)
+    else:
+        print(f"  {run}: macro-F1 {base:.4f} ({old_set}) -> "
+              f"{real_world['macro_f1']:.4f} ({new_set}), {d:+.4f} "
+              f"on {len(yt)} images. Old results archived.", flush=True)
     return real_world
 
 
@@ -266,6 +332,11 @@ def main():
     parser.add_argument("--run", help="Re-evaluate a single run instead of all of them.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Evaluate and report, but write and archive nothing.")
+    parser.add_argument("--refresh", action="store_true",
+                        help="Re-measure the set already published (its images were "
+                             "re-processed). Overwrites new-set results in place, backs "
+                             "up the previous pass, and does NOT touch the retired "
+                             "archive. Refuses rows not already on this set.")
     args = parser.parse_args()
 
     if not check_set(args.dir):
@@ -275,8 +346,13 @@ def main():
         return
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    refresh_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") if args.refresh else None
+    if args.refresh:
+        print("\nREFRESH: re-measuring the already-published set in place. The retired "
+              "archive is left untouched; each row's previous pass is backed up to "
+              "archive_<set>_<timestamp>/.")
     print(f"\nRe-evaluating on {device}. Frozen checkpoints; no training, no selection.")
-    print(f"New real-world set: {_abs(args.dir)}\n")
+    print(f"Real-world set: {_abs(args.dir)}\n")
 
     if args.run:
         runs = [args.run]
@@ -288,7 +364,8 @@ def main():
     for run in runs:
         if not os.path.isdir(os.path.join(RESULTS_DIR, run)):
             continue
-        result = reevaluate(run, args.dir, device, dry_run=args.dry_run)
+        result = reevaluate(run, args.dir, device, dry_run=args.dry_run,
+                            refresh=args.refresh, refresh_ts=refresh_ts)
         (done if result else skipped).append(run)
 
     print(f"\nRe-evaluated {len(done)} run(s).")
@@ -298,8 +375,13 @@ def main():
     if args.dry_run:
         print("Dry run: nothing was written or archived.")
         return
-    print("\nOld results are archived per run in "
-          "experiments/results/<run>/archive_<old_set>/.")
+    if args.refresh:
+        print(f"\nRefreshed. The previous pass is backed up per run in "
+              f"experiments/results/<run>/archive_<set>_{refresh_ts}/.")
+        print("The retired archive (archive_real_environment_test/) was not touched.")
+    else:
+        print("\nOld results are archived per run in "
+              "experiments/results/<run>/archive_<old_set>/.")
     print("Next:")
     print("  python -m experiments.compile_results                    # new tables")
     print("  python -m experiments.confusion_matrices --report-only   # new matrices, no GPU")
