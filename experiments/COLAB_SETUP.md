@@ -44,15 +44,22 @@ Colab **erases the runtime's disk every time it disconnects** (and it disconnect
 
 Paste each as its own cell and run in order.
 
-### Cell 1 - GPU check + get the code
+### Cell 1 - GPU check + get the code (clean checkout)
 ```python
 !nvidia-smi -L
+# Fresh checkout every session. Safe to re-run: your data comes from Cell 5 and your
+# results live on Drive (Cell 6), so nothing important lives inside /content/repo.
+# `%cd /content` first so we never delete the folder we're standing in.
+%cd /content
+!rm -rf /content/repo
 !git clone https://github.com/SiaJiaLe/AI-Based-Tomato-Leaf-Disease-Detection-Using-Image-Recognition.git /content/repo
 %cd /content/repo
 !git log --oneline -1
 ```
-`nvidia-smi -L` must list a GPU (e.g. `Tesla T4`). If it errors, the runtime type isn't
-set to GPU (Step B).
+`nvidia-smi -L` must list a GPU (e.g. `Tesla T4` or `A100`). If it errors, the runtime
+type isn't set to GPU (Step B). The last line must print a commit (e.g.
+`92c1170 COLAB_SETUP: ...`); if it says "not a git repository", the clone didn't finish -
+just run the cell again.
 
 ### Cell 2 - install the pinned dependencies
 ```python
@@ -63,17 +70,25 @@ import torch; print("torch", torch.__version__, "| CUDA:", torch.cuda.is_availab
 ```
 `CUDA: True` must print.
 
-> **If a later cell throws a numpy/torch import error:** Colab preinstalls a newer numpy,
-> and downgrading it to 1.26.4 sometimes needs a kernel restart to take effect. Do
-> **Runtime -> Restart session**, then re-run from **Cell 3** (the pip installs persist
-> across a restart, so you can skip Cell 2).
+> **IMPORTANT - after Cell 2, restart the session once.** Cell 2 downgrades numpy to
+> 1.26.4, but the kernel still has the old numpy binary loaded, so the next import often
+> fails with `numpy.dtype size changed ... Expected 96, got 88` (or a similar
+> binary-incompatibility / numpy error). This is expected. Do **Runtime -> Restart
+> session**, then continue from **Cell 3** - the pip installs persist across a restart,
+> so you do NOT re-run Cell 1 or Cell 2. (If you prefer, just restart proactively right
+> after Cell 2 finishes and skip the error entirely.)
 
 ### Cell 3 - download the segmentation model once
 ```python
+# Colab preinstalls cupy built for numpy 2; it breaks rembg's import under our numpy
+# 1.26.4 pin. We never use cupy, so remove it first (harmless if it isn't installed).
+!pip uninstall -y cupy-cuda12x cupy
 from rembg import new_session
 new_session("u2net")
 print("u2net ready")
 ```
+> If this cell still errors with a numpy binary-incompatibility message, you skipped the
+> restart above - do **Runtime -> Restart session** and run Cell 3 again.
 
 ### Cell 4 - mount Google Drive
 ```python
@@ -86,13 +101,16 @@ Follow the popup to authorize. Drive then appears at `/content/drive/MyDrive`.
 ```python
 import os, glob, zipfile, shutil
 
-REPO   = "/content/repo"
-DRIVE  = "/content/drive/MyDrive/tomato_fyp"      # <-- your Drive folder
-ZIP    = os.path.join(DRIVE, "data.zip")          # <-- your uploaded data zip
+REPO    = "/content/repo"
+DRIVE   = "/content/drive/MyDrive/tomato_fyp"     # <-- your Drive folder
+ZIP     = os.path.join(DRIVE, "data.zip")         # <-- your uploaded data zip
 EXCLUDE = {"Tomato___Target_Spot", "Tomato___Tomato_mosaic_virus"}
 IMG = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
 
 data = os.path.join(REPO, "data")
+real = os.path.join(data, "real_environment_dataset")
+raw  = os.path.join(data, "raw")
+bgr  = os.path.join(data, "backgrounds_generic_real")
 
 def class_images(d):
     """Total image files across the immediate <class>/ subfolders of d."""
@@ -100,6 +118,10 @@ def class_images(d):
         return 0
     return sum(sum(1 for f in os.listdir(os.path.join(d, c)) if f.lower().endswith(IMG))
                for c in os.listdir(d) if os.path.isdir(os.path.join(d, c)))
+
+def flat_images(d):
+    """Image files sitting directly inside d (backgrounds are a flat folder, not per-class)."""
+    return len([f for f in os.listdir(d) if f.lower().endswith(IMG)]) if os.path.isdir(d) else 0
 
 def resolve_root(base):
     """Return the dir whose <class>/ subfolders actually hold images. Handles a
@@ -113,14 +135,14 @@ def resolve_root(base):
             return p
     return base
 
-real = os.path.join(data, "real_environment_dataset")
-raw  = os.path.join(data, "raw")
-
-# Unzip from Drive -> local /content only if the images aren't already here (empty
-# .gitkeep shells don't count - we check for actual image files, not just folders).
-if class_images(raw) == 0 or class_images(resolve_root(real)) == 0:
+# Unzip from Drive -> local /content if ANY of the three sources is empty. Note that
+# backgrounds_generic_real AND real_environment_dataset ship in the repo as EMPTY
+# placeholder folders (README + .gitignore only), so the git clone pre-creates them -
+# we must MERGE the zip's images into them, not skip because the folder already exists.
+need = (class_images(raw) == 0 or class_images(resolve_root(real)) == 0 or flat_images(bgr) == 0)
+if need:
     assert os.path.isfile(ZIP), f"Zip not found on Drive: {ZIP}"
-    print("Unzipping data to local disk (one-time per session, a few minutes)...")
+    print("Unzipping data from Drive to local disk (one-time per session, a few minutes)...")
     shutil.rmtree("/content/_data_tmp", ignore_errors=True)
     with zipfile.ZipFile(ZIP) as z:
         z.extractall("/content/_data_tmp")
@@ -132,10 +154,20 @@ if class_images(raw) == 0 or class_images(resolve_root(real)) == 0:
         raise RuntimeError("raw/ + real_environment_dataset/ not found inside the zip")
     src = find_data_root("/content/_data_tmp")
     os.makedirs(data, exist_ok=True)
+    # RECURSIVELY merge each top-level item into data/. If a destination is missing we
+    # move it wholesale (fast); if it already exists we descend and move in only the files
+    # it's missing. The recursion matters: the git clone pre-creates EMPTY per-class
+    # folders under real_environment_dataset (and README/.gitignore under
+    # backgrounds_generic_real), so a shallow one-level merge would see those folders
+    # exist and skip the images inside them. Recursing copies the images into them.
+    def merge_into(s, d):
+        if not os.path.exists(d):
+            shutil.move(s, d); return
+        if os.path.isdir(s) and os.path.isdir(d):
+            for item in os.listdir(s):
+                merge_into(os.path.join(s, item), os.path.join(d, item))
     for name in os.listdir(src):
-        dst = os.path.join(data, name)
-        if not os.path.exists(dst):
-            shutil.move(os.path.join(src, name), dst)
+        merge_into(os.path.join(src, name), os.path.join(data, name))
     shutil.rmtree("/content/_data_tmp", ignore_errors=True)
 print("data/ contents:", sorted(os.listdir(data)))
 
@@ -156,17 +188,22 @@ for c in EXCLUDE:
     if os.path.isdir(p):
         shutil.move(p, os.path.join(excl, c)); print("Moved out of eval set:", c)
 
-# Verify BOTH sides before training - fail loudly here, not 3 hours into a run.
-def report(root, label):
-    cls = sorted(c for c in os.listdir(root) if os.path.isdir(os.path.join(root, c)))
-    print(f"\n{label}: {len(cls)} classes")
-    for c in cls:
-        n = sum(1 for f in os.listdir(os.path.join(root, c)) if f.lower().endswith(IMG))
-        print(f"  {n:5d}  {c}")
+# Verify ALL THREE sources before training - fail loudly here, not hours into a run.
+def report(root, label, per_class=True):
+    if per_class:
+        cls = sorted(c for c in os.listdir(root) if os.path.isdir(os.path.join(root, c)))
+        print(f"\n{label}: {len(cls)} classes")
+        for c in cls:
+            n = sum(1 for f in os.listdir(os.path.join(root, c)) if f.lower().endswith(IMG))
+            print(f"  {n:5d}  {c}")
+    else:
+        print(f"\n{label}: {flat_images(root)} images")
 report(real, "REAL eval (want 8, all nonzero)")
 report(raw,  "RAW training (want 10, all nonzero)")
+report(bgr,  "REAL backgrounds (want ~30-100)", per_class=False)
 assert class_images(real) > 0, "REAL eval set has no images - check the zip layout!"
 assert class_images(raw)  > 0, "RAW training set has no images - check the zip layout!"
+assert flat_images(bgr)   > 0, "backgrounds_generic_real is EMPTY - bgrand_real / seedrep will fail! Check the zip has these photos."
 os.makedirs(os.path.join(data, "mask_cache"), exist_ok=True)
 print("\nData ready.")
 ```
