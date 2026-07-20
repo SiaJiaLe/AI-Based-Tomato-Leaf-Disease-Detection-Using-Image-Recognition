@@ -100,11 +100,26 @@ print("u2net ready")
 
 ### Cell 4 - wire the data (symlinks + the 8-class real-world view)
 ```python
-import os
+import os, glob
 
 REPO = "/kaggle/working/repo"
-DATA_ROOT = "/kaggle/input/tomato-fyp-data"          # <-- CHANGE to your dataset path
 EXCLUDE = {"Tomato___Target_Spot", "Tomato___Tomato_mosaic_virus"}
+
+# Auto-find the folder that actually holds raw/ + real_environment_dataset/.
+# Kaggle mounts a dataset at /kaggle/input/<slug> (NOT the website URL). If you
+# zipped WITH a data/ prefix, the folders sit under .../<slug>/data - this checks
+# one level deeper too, so either layout works.
+def find_data_root():
+    for base in sorted(glob.glob("/kaggle/input/*")) + sorted(glob.glob("/kaggle/input/*/*")):
+        if (os.path.isdir(os.path.join(base, "raw"))
+                and os.path.isdir(os.path.join(base, "real_environment_dataset"))):
+            return base
+    raise RuntimeError(
+        "Could not find raw/ + real_environment_dataset/ under /kaggle/input.\n"
+        "Run  !find /kaggle/input -maxdepth 3 -type d  and set DATA_ROOT by hand below.")
+
+DATA_ROOT = find_data_root()          # or hard-code it, e.g. "/kaggle/input/tomato-fyp-data"
+print("DATA_ROOT =", DATA_ROOT)
 
 data = os.path.join(REPO, "data"); os.makedirs(data, exist_ok=True)
 def link(src, dst):
