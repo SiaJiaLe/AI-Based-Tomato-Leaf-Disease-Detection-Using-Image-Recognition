@@ -90,44 +90,85 @@ REPO   = "/content/repo"
 DRIVE  = "/content/drive/MyDrive/tomato_fyp"      # <-- your Drive folder
 ZIP    = os.path.join(DRIVE, "data.zip")          # <-- your uploaded data zip
 EXCLUDE = {"Tomato___Target_Spot", "Tomato___Tomato_mosaic_virus"}
+IMG = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
 
 data = os.path.join(REPO, "data")
 
-# Unzip from Drive -> local /content (fast training reads). Skips if already done.
-need = not (os.path.isdir(os.path.join(data, "raw")) and
-            os.path.isdir(os.path.join(data, "real_environment_dataset")))
-if need:
+def class_images(d):
+    """Total image files across the immediate <class>/ subfolders of d."""
+    if not os.path.isdir(d):
+        return 0
+    return sum(sum(1 for f in os.listdir(os.path.join(d, c)) if f.lower().endswith(IMG))
+               for c in os.listdir(d) if os.path.isdir(os.path.join(d, c)))
+
+def resolve_root(base):
+    """Return the dir whose <class>/ subfolders actually hold images. Handles a
+    same-name nested folder (real_environment_dataset/real_environment_dataset) and
+    .gitkeep-only placeholder shells - so re-unzipping on a resumed session self-heals."""
+    if class_images(base) > 0:
+        return base
+    for sub in (sorted(os.listdir(base)) if os.path.isdir(base) else []):
+        p = os.path.join(base, sub)
+        if os.path.isdir(p) and class_images(p) > 0:
+            return p
+    return base
+
+real = os.path.join(data, "real_environment_dataset")
+raw  = os.path.join(data, "raw")
+
+# Unzip from Drive -> local /content only if the images aren't already here (empty
+# .gitkeep shells don't count - we check for actual image files, not just folders).
+if class_images(raw) == 0 or class_images(resolve_root(real)) == 0:
     assert os.path.isfile(ZIP), f"Zip not found on Drive: {ZIP}"
     print("Unzipping data to local disk (one-time per session, a few minutes)...")
     shutil.rmtree("/content/_data_tmp", ignore_errors=True)
     with zipfile.ZipFile(ZIP) as z:
         z.extractall("/content/_data_tmp")
-    # find the folder holding raw/ + real_environment_dataset/ (zip may nest under data/)
-    def find_root(base):
-        for b in [base] + sorted(glob.glob(os.path.join(base, "*"))):
+    def find_data_root(b0):
+        for b in [b0] + sorted(glob.glob(os.path.join(b0, "*"))):
             if (os.path.isdir(os.path.join(b, "raw")) and
                     os.path.isdir(os.path.join(b, "real_environment_dataset"))):
                 return b
         raise RuntimeError("raw/ + real_environment_dataset/ not found inside the zip")
-    src = find_root("/content/_data_tmp")
+    src = find_data_root("/content/_data_tmp")
     os.makedirs(data, exist_ok=True)
     for name in os.listdir(src):
-        shutil.move(os.path.join(src, name), os.path.join(data, name))
+        dst = os.path.join(data, name)
+        if not os.path.exists(dst):
+            shutil.move(os.path.join(src, name), dst)
     shutil.rmtree("/content/_data_tmp", ignore_errors=True)
 print("data/ contents:", sorted(os.listdir(data)))
 
-# 8-class real-world view: move the 2 excluded classes aside (local disk is writable,
-# so unlike Kaggle we can just move them - reversible; the Drive zip is untouched).
-real = os.path.join(data, "real_environment_dataset")
+# Flatten a nested / placeholder-only real_environment_dataset so it holds the images.
+resolved = resolve_root(real)
+if resolved != real:
+    print(f"Real images are nested at {resolved} - flattening into {real}")
+    tmp = real + "__flatten_tmp"
+    shutil.move(resolved, tmp)
+    shutil.rmtree(real, ignore_errors=True)     # drop .gitkeep-only shells / empty nesting
+    shutil.move(tmp, real)
+
+# 8-class real-world view: move the 2 excluded classes aside (writable local disk, so
+# unlike Kaggle we can just move them - reversible; the Drive zip is untouched).
 excl = os.path.join(data, "real_environment_dataset_excluded"); os.makedirs(excl, exist_ok=True)
 for c in EXCLUDE:
     p = os.path.join(real, c)
     if os.path.isdir(p):
         shutil.move(p, os.path.join(excl, c)); print("Moved out of eval set:", c)
-kept = [c for c in sorted(os.listdir(real)) if os.path.isdir(os.path.join(real, c))]
-print(f"Real-world eval classes (should be 8): {len(kept)}")
 
+# Verify BOTH sides before training - fail loudly here, not 3 hours into a run.
+def report(root, label):
+    cls = sorted(c for c in os.listdir(root) if os.path.isdir(os.path.join(root, c)))
+    print(f"\n{label}: {len(cls)} classes")
+    for c in cls:
+        n = sum(1 for f in os.listdir(os.path.join(root, c)) if f.lower().endswith(IMG))
+        print(f"  {n:5d}  {c}")
+report(real, "REAL eval (want 8, all nonzero)")
+report(raw,  "RAW training (want 10, all nonzero)")
+assert class_images(real) > 0, "REAL eval set has no images - check the zip layout!"
+assert class_images(raw)  > 0, "RAW training set has no images - check the zip layout!"
 os.makedirs(os.path.join(data, "mask_cache"), exist_ok=True)
+print("\nData ready.")
 ```
 
 ### Cell 6 - point results at Drive so they survive disconnects
