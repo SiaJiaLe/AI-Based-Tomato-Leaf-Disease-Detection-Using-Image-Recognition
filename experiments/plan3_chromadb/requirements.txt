@@ -1,0 +1,4 @@
+# Plan 3 extra dependency. torch / torchvision / numpy / scikit-learn / Pillow are
+# assumed present from the existing experiments pipeline. DINOv2 weights are fetched by
+# torch.hub at first run (redirect TORCH_HOME to Drive on Colab).
+chromadb>=0.5.0
