@@ -62,7 +62,12 @@ def embed_batch(paths, model=None, device=None, batch_size=32, model_name="dinov
     out = []
     for i in range(0, len(paths), batch_size):
         chunk = paths[i:i + batch_size]
-        imgs = [_TF(Image.open(p).convert("RGB")) for p in chunk]
+        imgs = []
+        for p in chunk:
+            if isinstance(p, str):
+                imgs.append(_TF(Image.open(p).convert("RGB")))
+            else:
+                imgs.append(_TF(p.convert("RGB")))
         x = torch.stack(imgs).to(device)
         f = model(x)                                      # (B, D) CLS feature
         f = torch.nn.functional.normalize(f, dim=1)       # unit norm -> cosine space

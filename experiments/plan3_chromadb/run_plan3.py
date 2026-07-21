@@ -117,6 +117,9 @@ def main():
     ap.add_argument("--dino-model", default="dinov2_vits14")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--num-composites", type=int, default=2, help="Number of composites to generate per train image.")
+    ap.add_argument("--composite-seed", type=int, default=42, help="Seed for background randomization.")
+    ap.add_argument("--bg-dir", default="data/backgrounds_generic_real", help="Directory of background images.")
     ap.add_argument("--rebuild-index", action="store_true",
                     help="Force a fresh HNSW build even if a full index already exists.")
     ap.add_argument("--out-dir", default=RESULTS_DIR)
@@ -145,10 +148,12 @@ def main():
     cache_dir = args.cache_dir
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
-    train_cache = os.path.join(cache_dir, f"dino_{args.dino_model}_train.npz") if cache_dir else None
+    train_cache = os.path.join(cache_dir, f"dino_{args.dino_model}_train_comp{args.num_composites}.npz") if cache_dir else None
     col, classes = build_index(train_dir, args.chroma_path, cache_file=train_cache,
                                device=device, model_name=args.dino_model,
-                               rebuild=args.rebuild_index)
+                               rebuild=args.rebuild_index,
+                               bg_dir=args.bg_dir, num_composites=args.num_composites,
+                               composite_seed=args.composite_seed)
     sanity_check(col, train_dir, device=device, model_name=args.dino_model)
     assert_class_alignment(classes, class_to_idx)
     classes_idx = {c: i for i, c in enumerate(classes)}
@@ -313,6 +318,7 @@ def main():
     summary = {
         "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
         "dino_model": args.dino_model, "seed": args.seed, "n_classes": n_classes,
+        "num_composites": args.num_composites, "composite_seed": args.composite_seed, "bg_dir": args.bg_dir,
         "baseline": {"three_seed_mean": BASELINE_MEAN, "three_seed_std": BASELINE_STD,
                      "seed42_this_ckpt": seed42_f1},
         "calibration": {"temperature": T, "ece_raw": ece_raw, "ece_calibrated": ece_cal},

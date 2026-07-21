@@ -101,7 +101,8 @@ def resolve_root(base):
     return base
 
 # Unzip raw + real from Drive -> local disk if either is empty. (Plan 3 needs raw to
-# rebuild the split and real for evaluation; it does NOT need the background photos.)
+# rebuild the split, real for evaluation, and the background photos for generating
+# composites on the fly during indexing.)
 need = (class_images(raw) == 0 or class_images(resolve_root(real)) == 0)
 if need:
     assert os.path.isfile(ZIP), f"Zip not found on Drive: {ZIP}"

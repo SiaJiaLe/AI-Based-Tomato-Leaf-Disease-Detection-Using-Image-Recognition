@@ -16,7 +16,10 @@ import os
 
 import numpy as np
 
+from PIL import Image
+
 from .embed_dino import embed_paths_cached
+from background_randomization import BackgroundRandomize
 
 FORBIDDEN = ("/val/", "/test/", "real_environment", "real_world", "real-environment")
 COLLECTION_NAME = "plantvillage_train_dinov2"
@@ -43,7 +46,8 @@ def list_train(train_dir):
 
 
 def build_index(train_dir, chroma_path, cache_file=None, device=None,
-                model_name="dinov2_vits14", rebuild=False):
+                model_name="dinov2_vits14", rebuild=False,
+                bg_dir=None, num_composites=0, composite_seed=42):
     """Build (or open) the persistent Chroma collection of train embeddings.
 
     Returns (collection, classes). If the collection already holds the right number of
@@ -54,7 +58,15 @@ def build_index(train_dir, chroma_path, cache_file=None, device=None,
     import chromadb
 
     paths, labels, classes = list_train(train_dir)
-    print(f"Train split: {len(paths)} images across {len(classes)} classes.", flush=True)
+    
+    if num_composites > 0:
+        if not bg_dir or not os.path.isdir(bg_dir):
+            raise ValueError(f"bg_dir '{bg_dir}' must be a valid directory when num_composites > 0")
+        print(f"Train split: {len(paths)} clean images. Adding {num_composites} composites per image.", flush=True)
+        total_expected = len(paths) * (1 + num_composites)
+    else:
+        print(f"Train split: {len(paths)} images across {len(classes)} classes.", flush=True)
+        total_expected = len(paths)
 
     client = chromadb.PersistentClient(path=chroma_path)
     if rebuild:
@@ -65,23 +77,75 @@ def build_index(train_dir, chroma_path, cache_file=None, device=None,
     col = client.get_or_create_collection(
         name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
 
-    if col.count() == len(paths) and not rebuild:
+    if col.count() == total_expected and not rebuild:
         print(f"  reusing existing index ({col.count()} vectors). Pass rebuild=True to "
               f"force a fresh build.", flush=True)
         return col, classes
-    if col.count() not in (0, len(paths)):
+    if col.count() not in (0, total_expected):
         # Partial/foreign index - start clean rather than mix vector sets.
         client.delete_collection(COLLECTION_NAME)
         col = client.get_or_create_collection(
             name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
 
-    emb = embed_paths_cached(paths, cache_file, device=device, model_name=model_name)
+    emb = None
+    if cache_file and os.path.isfile(cache_file):
+        data = np.load(cache_file, allow_pickle=True)
+        cached_paths = list(data["paths"])
+        if cached_paths == list(paths):
+            print(f"  loaded {len(data['emb'])} cached embeddings <- {os.path.basename(cache_file)}", flush=True)
+            emb = data["emb"].astype("float32")
+            all_labels = list(data["labels"])
+            all_sources = list(data.get("sources", ["clean"] * len(all_labels)))
+        else:
+            print("  cache base path-list mismatch; recomputing embeddings.", flush=True)
+
+    if emb is None:
+        from .embed_dino import embed_batch
+        all_labels = []
+        all_sources = []
+        
+        if num_composites > 0:
+            bg_transform = BackgroundRandomize(background_dir=bg_dir, prob=1.0, seed=composite_seed)
+        
+        chunk_size = 512
+        emb_list = []
+        for i in range(0, len(paths), chunk_size):
+            chunk_paths = paths[i:i + chunk_size]
+            chunk_labels = labels[i:i + chunk_size]
+            
+            batch_items = []
+            for p, l in zip(chunk_paths, chunk_labels):
+                batch_items.append(p)
+                all_labels.append(l)
+                all_sources.append("clean")
+                
+                if num_composites > 0:
+                    orig_img = Image.open(p).convert("RGB")
+                    # Deterministic seed per image based on path hash
+                    bg_transform.rng.seed(composite_seed + hash(p) % 1000000)
+                    for _ in range(num_composites):
+                        comp = bg_transform(orig_img.copy())
+                        batch_items.append(comp)
+                        all_labels.append(l)
+                        all_sources.append("composited")
+                        
+            chunk_emb = embed_batch(batch_items, device=device, model_name=model_name)
+            emb_list.append(chunk_emb)
+            
+        emb = np.concatenate(emb_list, 0) if emb_list else np.zeros((0, 384), dtype="float32")
+        
+        if cache_file:
+            os.makedirs(os.path.dirname(os.path.abspath(cache_file)), exist_ok=True)
+            np.savez(cache_file, emb=emb, paths=np.array(list(paths), dtype=object),
+                     labels=np.array(all_labels, dtype=object), sources=np.array(all_sources, dtype=object))
+            print(f"  cached {len(emb)} embeddings -> {os.path.basename(cache_file)}", flush=True)
+
     B = 512
-    for i in range(0, len(paths), B):
-        j = min(i + B, len(paths))
+    for i in range(0, len(emb), B):
+        j = min(i + B, len(emb))
         col.add(ids=[f"tr_{n}" for n in range(i, j)],
                 embeddings=emb[i:j].tolist(),
-                metadatas=[{"label": l} for l in labels[i:j]])
+                metadatas=[{"label": all_labels[k], "source": all_sources[k]} for k in range(i, j)])
     print(f"  indexed {col.count()} train embeddings into '{COLLECTION_NAME}'.", flush=True)
     return col, classes
 
