@@ -277,3 +277,63 @@ runner will still resume next time - you just lose the in-progress run).
 - **Evaluation:** Cell 5 moves those two out of `real_environment_dataset`, so real-world
   metrics are over 8 classes and never KeyError.
 - Both are reversible - their images stay on disk (raw/ and the `_excluded/` folder).
+
+---
+
+## F. Retrain everything from scratch (keeps the old results)
+
+Use this when you want a **fresh full run of all 28 models** but must not lose the
+completed study. Because the runner in Cell 7 **skips** any run that already has results,
+a fresh retrain needs an **empty** `results/`. The trick: rename the current Drive
+`results` folder to `results_archive_<timestamp>` - nothing is deleted, every old
+checkpoint/metric/confusion file is preserved - then start with a fresh empty `results/`.
+
+> Archive the results you actually want to keep FIRST. If you re-scored on the A100
+> (`reeval_single_env.py`), that final single-environment set is what gets archived now -
+> archive it before retraining or it is overwritten.
+
+### Archive cell - run ONCE, in place of Cell 6
+```python
+# === RETRAIN FROM SCRATCH: archive the current results, then start fresh ===
+# Run this ONCE, only when you deliberately want to retrain every model. It RENAMES the
+# current Drive results folder to results_archive_<timestamp> (nothing is deleted - every
+# old checkpoint, metric and confusion file is preserved, exactly like your existing
+# results_archive_* folders), then creates a fresh empty results/ so Cell 7 retrains all
+# runs instead of skipping them.
+#
+# DO NOT run this on a normal resume session - it would archive your half-finished fresh
+# run and start over. Run it once, then only Cells 1-5 + 7 on later sessions.
+import os, shutil, time
+
+DRIVE   = "/content/drive/MyDrive/tomato_fyp"
+results = os.path.join(DRIVE, "results")
+assert os.path.isdir("/content/drive/MyDrive"), "Drive not mounted - run Cell 4 first."
+
+if os.path.isdir(results) and os.listdir(results):
+    stamp   = time.strftime("%Y%m%d_%H%M%S")
+    archive = os.path.join(DRIVE, f"results_archive_{stamp}")
+    shutil.move(results, archive)
+    print("Archived old results ->", archive, "|", len(os.listdir(archive)), "items preserved")
+else:
+    print("No existing results to archive (missing or already empty).")
+
+# Fresh empty results/ + re-point the repo symlink at it.
+os.makedirs(results, exist_ok=True)
+link = "/content/repo/experiments/results"
+if os.path.islink(link):
+    os.remove(link)
+elif os.path.isdir(link) and not os.listdir(link):
+    os.rmdir(link)
+os.symlink(results, link)
+print("results ->", os.path.realpath(link), "(fresh, empty)")
+print("Now run Cell 7 to retrain everything from scratch.")
+```
+
+**Fresh-retrain flow:** Cells 1-5 (setup + data) -> **this archive cell (once, instead of
+Cell 6)** -> Cell 7 (train). On later resume sessions run **Cells 1-5 + 7 only** - do NOT
+re-run the archive cell, or it will archive the half-finished fresh run and start over.
+
+**To read an archived study later:** point the symlink back at it for one session -
+`os.remove("/content/repo/experiments/results")` then
+`os.symlink("/content/drive/MyDrive/tomato_fyp/results_archive_<stamp>", "/content/repo/experiments/results")`
+- then Cell 8 reads that archived set. Re-run Cell 6 to return to the live results.
