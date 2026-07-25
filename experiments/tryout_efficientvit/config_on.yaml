@@ -1,0 +1,17 @@
+# EfficientViT-B0 try-out — advanced augmentation ON (basic-4 + field block).
+# NOT part of the research. Mirrors the study's ON augmentation condition.
+run_name: efficientvit_b0_on
+seed: 42
+timm_model: efficientvit_b0
+data_dir: data/processed
+real_world_dir: data/real_environment_dataset
+advanced_augmentation: true           # ON: basic-4 + the advanced field-condition block
+label_smoothing: 0.1
+training:
+  phase_a_epochs: 5                    # head-only warm-up
+  phase_b_epochs: 20                   # full fine-tune
+  patience: 7                          # early stop on val macro-F1
+  phase_a_lr: 1.0e-3
+  phase_b_lr: 1.0e-4
+  weight_decay: 0.05
+  batch_size: 32

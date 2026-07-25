@@ -1,0 +1,8 @@
+# EfficientViT-B0 try-out — NO extra dependency needed.
+#
+# `efficientvit_b0` ships inside timm, and experiments/requirements.txt already
+# pins timm==1.0.27 (which includes the EfficientViT MIT family). So just install
+# the study requirements as usual:
+#     pip install -r experiments/requirements.txt
+#
+# This file exists only to document that the try-out adds nothing new.
