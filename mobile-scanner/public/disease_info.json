@@ -1,0 +1,42 @@
+{
+  "Tomato___Bacterial_spot": {
+    "name": "Bacterial Spot",
+    "type": "Bacterial",
+    "tip": "Remove and destroy infected leaves and debris. Use certified disease-free seed, avoid overhead watering, and apply copper-based sprays early. Rotate away from tomatoes/peppers for 2-3 years."
+  },
+  "Tomato___Early_blight": {
+    "name": "Early Blight",
+    "type": "Fungal (Alternaria)",
+    "tip": "Remove lower infected leaves, mulch to stop soil splash, and space plants for airflow. Apply chlorothalonil or mancozeb on a schedule. Rotate crops and keep plants well-fed."
+  },
+  "Tomato___Late_blight": {
+    "name": "Late Blight",
+    "type": "Oomycete (Phytophthora)",
+    "tip": "Acts fast — remove and destroy infected plants immediately. Avoid leaf wetness, apply protectant fungicide (chlorothalonil) before spread, and never compost infected material."
+  },
+  "Tomato___Leaf_Mold": {
+    "name": "Leaf Mold",
+    "type": "Fungal (Passalora)",
+    "tip": "Thrives in humidity — improve ventilation, reduce leaf wetness, and lower greenhouse humidity. Prune for airflow, use resistant varieties, and apply fungicide if severe."
+  },
+  "Tomato___Septoria_leaf_spot": {
+    "name": "Septoria Leaf Spot",
+    "type": "Fungal (Septoria)",
+    "tip": "Pick off spotted leaves early, mulch to block soil splash, and avoid overhead irrigation. Apply chlorothalonil or copper fungicide and rotate crops each season."
+  },
+  "Tomato___Spider_mites Two-spotted_spider_mite": {
+    "name": "Two-Spotted Spider Mite",
+    "type": "Pest (mite)",
+    "tip": "Spray undersides with water to dislodge mites, then treat with insecticidal soap, horticultural oil, or a miticide. Avoid drought stress and encourage predatory mites."
+  },
+  "Tomato___Tomato_Yellow_Leaf_Curl_Virus": {
+    "name": "Yellow Leaf Curl Virus (TYLCV)",
+    "type": "Viral (whitefly-borne)",
+    "tip": "No cure once infected — remove affected plants. Control the whitefly vector with insecticides, reflective mulch, and fine netting. Plant TYLCV-resistant varieties."
+  },
+  "Tomato___healthy": {
+    "name": "Healthy",
+    "type": "No disease detected",
+    "tip": "No disease signs found. Keep monitoring, maintain good spacing and airflow, water at the base, and feed a balanced fertilizer."
+  }
+}

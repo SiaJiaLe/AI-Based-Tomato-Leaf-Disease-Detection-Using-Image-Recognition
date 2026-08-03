@@ -1,0 +1,22 @@
+{
+  "name": "tomato-leaf-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "On-device tomato leaf disease scanner (PWA). EfficientNet-B0 runs fully in the browser via onnxruntime-web.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.20.1",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.0.7",
+    "vite-plugin-pwa": "^0.21.1",
+    "vite-plugin-static-copy": "^2.2.0"
+  }
+}
